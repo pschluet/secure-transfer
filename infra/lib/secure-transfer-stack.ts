@@ -248,10 +248,10 @@ export class SecureTransferStack extends Stack {
           allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
         },
       },
-      errorResponses: [
-        { httpStatus: 403, responseHttpStatus: 200, responsePagePath: "/index.html" },
-        { httpStatus: 404, responseHttpStatus: 200, responsePagePath: "/index.html" },
-      ],
+      // No custom error responses: this app has no client-side routing (a
+      // single "/" that switches views by auth state, not by URL), so there's
+      // no SPA-fallback path to rewrite — and a distribution-wide 403/404
+      // rewrite would also swallow real 403/404 JSON responses from /api/*.
     });
 
     // -------------------------------------------------------------------
