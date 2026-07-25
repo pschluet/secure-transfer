@@ -449,12 +449,12 @@ td {
 
 td:first-child,
 th:first-child {
-  padding-left: 0;
+  padding-left: 1.1rem;
 }
 
 td:last-child,
 th:last-child {
-  padding-right: 0;
+  padding-right: 1.1rem;
   text-align: right;
 }
 
@@ -798,6 +798,12 @@ tbody tr:hover {
     border-bottom: none;
     padding: 0.2rem 0;
     text-align: left !important;
+  }
+
+  td:first-child,
+  td:last-child {
+    padding-left: 0;
+    padding-right: 0;
   }
 
   td:last-child {

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { triggerBrowserDownload } from "../lib/upload";
 import { downloadAllAsZip } from "../lib/zip";
+import { pollAfterDelays } from "../lib/poll";
 import { formatBytes, formatDate, formatTimeLeft, zipFilename } from "../lib/format";
 import { CreateUserForm } from "../components/CreateUserForm";
 import { ShareFilesForm } from "../components/ShareFilesForm";
@@ -123,7 +124,10 @@ export function AdminDashboard() {
         <section>
           <h2>Add a user</h2>
           <CreateUserForm onCreated={() => void loadUsers()} />
-          <h2>Users</h2>
+          <div className="section-header">
+            <h2>Users</h2>
+            <RefreshButton onRefresh={loadUsers} label="Refresh users" />
+          </div>
           {!users ? (
             <p className="hint">Loading…</p>
           ) : users.length === 0 ? (
@@ -296,6 +300,10 @@ export function AdminDashboard() {
               setShareTarget(null);
               void loadShares();
               void loadUsers();
+              // The share flips to "ready" once the S3 event handler
+              // processes the upload a few seconds later — poll a couple
+              // more times so it shows up without a manual refresh.
+              pollAfterDelays(() => void loadShares());
             }}
           />
         </Modal>
