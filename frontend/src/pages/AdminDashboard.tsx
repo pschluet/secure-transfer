@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
-import { downloadAllStaggered, triggerBrowserDownload } from "../lib/upload";
-import { formatBytes, formatDate, formatTimeLeft } from "../lib/format";
+import { triggerBrowserDownload } from "../lib/upload";
+import { downloadAllAsZip } from "../lib/zip";
+import { formatBytes, formatDate, formatTimeLeft, zipFilename } from "../lib/format";
 import { CreateUserForm } from "../components/CreateUserForm";
 import { ShareFilesForm } from "../components/ShareFilesForm";
 import { Modal } from "../components/Modal";
 import { FileItem } from "../components/FileItem";
 import { StatusPill } from "../components/StatusPill";
+import { RefreshButton } from "../components/RefreshButton";
 import type { AdminUserRow, ShareGroupWithRecipient, UploadGroupWithSender, UserProfile } from "../types";
 
 type Tab = "users" | "shares" | "uploads";
@@ -22,6 +24,7 @@ export function AdminDashboard() {
   const [uploads, setUploads] = useState<UploadGroupWithSender[] | null>(null);
   const [shareTarget, setShareTarget] = useState<UserProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [zippingId, setZippingId] = useState<string | null>(null);
 
   async function loadUsers() {
     try {
@@ -82,15 +85,22 @@ export function AdminDashboard() {
   }
 
   async function handleDownloadAll(u: UploadGroupWithSender) {
+    setZippingId(u.id);
+    setError(null);
     try {
       const readyFiles = u.files.filter((f) => f.status === "ready");
-      const urls = await Promise.all(
-        readyFiles.map((f) => api.adminDownloadUploadFile(u.senderSub, u.id, f.fileId).then((r) => r.url))
+      const withUrls = await Promise.all(
+        readyFiles.map(async (f) => ({
+          name: f.name,
+          url: (await api.adminDownloadUploadFile(u.senderSub, u.id, f.fileId)).url,
+        }))
       );
-      downloadAllStaggered(urls);
+      await downloadAllAsZip(withUrls, zipFilename("secure-transfer", u.createdAt));
       void loadUploads();
     } catch (err) {
       setError(errorMessage(err));
+    } finally {
+      setZippingId(null);
     }
   }
 
@@ -161,7 +171,10 @@ export function AdminDashboard() {
 
       {tab === "shares" && (
         <section>
-          <h2>Files you&rsquo;ve shared</h2>
+          <div className="section-header">
+            <h2>Files you&rsquo;ve shared</h2>
+            <RefreshButton onRefresh={loadShares} label="Refresh shares" />
+          </div>
           {!shares ? (
             <p className="hint">Loading…</p>
           ) : shares.length === 0 ? (
@@ -209,7 +222,10 @@ export function AdminDashboard() {
 
       {tab === "uploads" && (
         <section>
-          <h2>Files sent to you</h2>
+          <div className="section-header">
+            <h2>Files sent to you</h2>
+            <RefreshButton onRefresh={loadUploads} label="Refresh uploads" />
+          </div>
           {!uploads ? (
             <p className="hint">Loading…</p>
           ) : uploads.length === 0 ? (
@@ -250,8 +266,12 @@ export function AdminDashboard() {
                     </ul>
                     <div className="card-actions" style={{ justifyContent: "space-between" }}>
                       {readyCount > 1 ? (
-                        <button className="secondary small" onClick={() => void handleDownloadAll(u)}>
-                          Download all ({readyCount})
+                        <button
+                          className="secondary small"
+                          disabled={zippingId === u.id}
+                          onClick={() => void handleDownloadAll(u)}
+                        >
+                          {zippingId === u.id ? "Zipping…" : `Download all as .zip (${readyCount})`}
                         </button>
                       ) : (
                         <span />

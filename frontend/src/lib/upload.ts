@@ -50,14 +50,3 @@ export function triggerBrowserDownload(url: string): void {
   a.click();
   a.remove();
 }
-
-/**
- * Since files aren't zipped, "download all" just fires one browser download
- * per file. Staggering them avoids browsers flagging rapid same-origin
- * downloads as a popup burst.
- */
-export function downloadAllStaggered(urls: string[], delayMs = 350): void {
-  urls.forEach((url, i) => {
-    setTimeout(() => triggerBrowserDownload(url), i * delayMs);
-  });
-}

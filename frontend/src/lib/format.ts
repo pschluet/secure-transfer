@@ -23,3 +23,7 @@ export function formatDate(iso: string): string {
     timeStyle: "short",
   });
 }
+
+export function zipFilename(prefix: string, iso: string): string {
+  return `${prefix}-${iso.slice(0, 10)}.zip`;
+}

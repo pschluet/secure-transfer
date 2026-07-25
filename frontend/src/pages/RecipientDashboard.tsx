@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../lib/api";
-import { downloadAllStaggered, triggerBrowserDownload, uploadFiles } from "../lib/upload";
-import { formatDate, formatTimeLeft } from "../lib/format";
+import { triggerBrowserDownload, uploadFiles } from "../lib/upload";
+import { downloadAllAsZip } from "../lib/zip";
+import { formatDate, formatTimeLeft, zipFilename } from "../lib/format";
 import { FilePicker } from "../components/FilePicker";
 import { FileItem } from "../components/FileItem";
 import { ProgressBar } from "../components/ProgressBar";
 import { StatusPill } from "../components/StatusPill";
+import { RefreshButton } from "../components/RefreshButton";
 import type { PresignedFileUpload, ShareGroup, UploadGroup } from "../types";
 
 function errorMessage(err: unknown): string {
@@ -22,6 +24,7 @@ export function RecipientDashboard() {
   const [presigned, setPresigned] = useState<PresignedFileUpload[] | null>(null);
   const [progress, setProgress] = useState<Record<string, number> | null>(null);
   const [busy, setBusy] = useState(false);
+  const [zippingId, setZippingId] = useState<string | null>(null);
 
   async function loadShares() {
     try {
@@ -54,15 +57,22 @@ export function RecipientDashboard() {
   }
 
   async function handleDownloadAll(share: ShareGroup) {
+    setZippingId(share.id);
+    setError(null);
     try {
       const readyFiles = share.files.filter((f) => f.status === "ready");
-      const urls = await Promise.all(
-        readyFiles.map((f) => api.meDownloadShareFile(share.id, f.fileId).then((r) => r.url))
+      const withUrls = await Promise.all(
+        readyFiles.map(async (f) => ({
+          name: f.name,
+          url: (await api.meDownloadShareFile(share.id, f.fileId)).url,
+        }))
       );
-      downloadAllStaggered(urls);
+      await downloadAllAsZip(withUrls, zipFilename("secure-transfer", share.createdAt));
       void loadShares();
     } catch (err) {
       setError(errorMessage(err));
+    } finally {
+      setZippingId(null);
     }
   }
 
@@ -94,7 +104,10 @@ export function RecipientDashboard() {
       {error && <p className="error">{error}</p>}
 
       <section>
-        <h2>Files shared with you</h2>
+        <div className="section-header">
+          <h2>Files shared with you</h2>
+          <RefreshButton onRefresh={loadShares} label="Refresh shared files" />
+        </div>
         {!shares ? (
           <p className="hint">Loading…</p>
         ) : shares.length === 0 ? (
@@ -132,8 +145,12 @@ export function RecipientDashboard() {
                   </ul>
                   {readyCount > 1 && (
                     <div className="card-actions">
-                      <button className="secondary small" onClick={() => void handleDownloadAll(s)}>
-                        Download all ({readyCount})
+                      <button
+                        className="secondary small"
+                        disabled={zippingId === s.id}
+                        onClick={() => void handleDownloadAll(s)}
+                      >
+                        {zippingId === s.id ? "Zipping…" : `Download all as .zip (${readyCount})`}
                       </button>
                     </div>
                   )}
@@ -169,7 +186,10 @@ export function RecipientDashboard() {
       </section>
 
       <section>
-        <h2>Your upload history</h2>
+        <div className="section-header">
+          <h2>Your upload history</h2>
+          <RefreshButton onRefresh={loadUploads} label="Refresh upload history" />
+        </div>
         {!uploads ? (
           <p className="hint">Loading…</p>
         ) : uploads.length === 0 ? (
