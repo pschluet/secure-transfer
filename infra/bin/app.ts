@@ -11,7 +11,7 @@ const account = process.env.CDK_DEFAULT_ACCOUNT ?? "435432815368";
 // and lets CloudFront reference the cert without a cross-region lookup.
 const region = "us-east-1";
 
-const githubRepo = app.node.tryGetContext("githubRepo") ?? "paulschlueter/secure-transfer";
+const githubRepo = app.node.tryGetContext("githubRepo") ?? "pschluet/secure-transfer";
 const adminEmail = app.node.tryGetContext("adminEmail") ?? "paul@paulschlueter.com";
 
 new SecureTransferStack(app, "SecureTransferStack", {

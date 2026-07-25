@@ -10,3 +10,4 @@ frontend/.env
 frontend/.env.*.local
 *.log
 .aws-sam/
+outputs.json
