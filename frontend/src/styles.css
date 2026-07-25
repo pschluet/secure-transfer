@@ -308,11 +308,13 @@ form.inline-form > input {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 1.1rem;
   color: var(--text-dim);
 }
 
 .auth-card {
-  width: 340px;
+  width: 100%;
+  max-width: 340px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -394,6 +396,11 @@ form.inline-form > input {
   display: flex;
   align-items: center;
   gap: 1.1rem;
+  min-width: 0;
+}
+
+.app-header-right button {
+  flex-shrink: 0;
 }
 
 main {
@@ -409,6 +416,13 @@ main {
   gap: 1.5rem;
   border-bottom: 1px solid var(--border);
   margin-bottom: 0.5rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .tabs button {
@@ -419,6 +433,8 @@ main {
   padding: 0.7rem 0;
   border-bottom: 2px solid transparent;
   font-weight: 500;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .tabs button:hover {
@@ -776,6 +792,10 @@ tbody tr:hover {
     padding-right: 1.1rem;
   }
 
+  .tabs {
+    gap: 1rem;
+  }
+
   table,
   thead,
   tbody,
@@ -808,5 +828,59 @@ tbody tr:hover {
 
   td:last-child {
     margin-top: 0.4rem;
+  }
+
+  /* Stacked table rows hide <thead>, so cells that need column context
+     print their own label (see data-label attrs in AdminDashboard). */
+  td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.15rem;
+  }
+
+  .card-header {
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+
+  button.small {
+    min-height: 2.25rem;
+  }
+
+  /* Let the signed-in email wrap onto its own full-width line instead of
+     truncating, so it's always fully readable. */
+  .app-header {
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
+  }
+
+  .app-header-right {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    width: 100%;
+  }
+
+  .app-header-right .hint {
+    flex: 1 0 100%;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  /* Wrap filenames instead of ellipsis-truncating them. */
+  .file-item-name {
+    overflow: visible;
+    text-overflow: unset;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .file-item,
+  .selected-files li {
+    align-items: start;
   }
 }

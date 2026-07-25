@@ -149,13 +149,13 @@ export function AdminDashboard() {
                     <td>
                       {u.firstName} {u.lastName}
                     </td>
-                    <td>{u.email}</td>
-                    <td>
+                    <td data-label="Email">{u.email}</td>
+                    <td data-label="Downloaded?">
                       <StatusPill tone={u.hasDownloaded ? "success" : "neutral"}>
                         {u.hasDownloaded ? "Yes" : "No"}
                       </StatusPill>
                     </td>
-                    <td>
+                    <td data-label="Sent files?">
                       <StatusPill tone={u.hasSent ? "success" : "neutral"}>
                         {u.hasSent ? "Yes" : "No"}
                       </StatusPill>
