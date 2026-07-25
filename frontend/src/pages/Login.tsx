@@ -94,7 +94,7 @@ export function Login() {
               autoFocus
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              placeholder="123456"
+              placeholder="12345678"
             />
             {error && <p className="error">{error}</p>}
             <button type="submit" disabled={busy}>
