@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
-import { triggerBrowserDownload } from "../lib/upload";
+import { downloadAllStaggered, triggerBrowserDownload } from "../lib/upload";
 import { formatBytes, formatDate, formatTimeLeft } from "../lib/format";
 import { CreateUserForm } from "../components/CreateUserForm";
 import { ShareFilesForm } from "../components/ShareFilesForm";
 import { Modal } from "../components/Modal";
+import { FileItem } from "../components/FileItem";
+import { StatusPill } from "../components/StatusPill";
 import type { AdminUserRow, ShareGroupWithRecipient, UploadGroupWithSender, UserProfile } from "../types";
 
 type Tab = "users" | "shares" | "uploads";
@@ -79,6 +81,19 @@ export function AdminDashboard() {
     }
   }
 
+  async function handleDownloadAll(u: UploadGroupWithSender) {
+    try {
+      const readyFiles = u.files.filter((f) => f.status === "ready");
+      const urls = await Promise.all(
+        readyFiles.map((f) => api.adminDownloadUploadFile(u.senderSub, u.id, f.fileId).then((r) => r.url))
+      );
+      downloadAllStaggered(urls);
+      void loadUploads();
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
   return (
     <div className="dashboard">
       <nav className="tabs">
@@ -100,9 +115,9 @@ export function AdminDashboard() {
           <CreateUserForm onCreated={() => void loadUsers()} />
           <h2>Users</h2>
           {!users ? (
-            <p>Loading…</p>
+            <p className="hint">Loading…</p>
           ) : users.length === 0 ? (
-            <p className="hint">No users yet.</p>
+            <div className="empty-state">No users yet — add one above.</div>
           ) : (
             <table>
               <thead>
@@ -121,10 +136,20 @@ export function AdminDashboard() {
                       {u.firstName} {u.lastName}
                     </td>
                     <td>{u.email}</td>
-                    <td>{u.hasDownloaded ? "Yes" : "No"}</td>
-                    <td>{u.hasSent ? "Yes" : "No"}</td>
                     <td>
-                      <button onClick={() => setShareTarget(u)}>Share files</button>
+                      <StatusPill tone={u.hasDownloaded ? "success" : "neutral"}>
+                        {u.hasDownloaded ? "Yes" : "No"}
+                      </StatusPill>
+                    </td>
+                    <td>
+                      <StatusPill tone={u.hasSent ? "success" : "neutral"}>
+                        {u.hasSent ? "Yes" : "No"}
+                      </StatusPill>
+                    </td>
+                    <td>
+                      <button className="secondary small" onClick={() => setShareTarget(u)}>
+                        Share files
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -138,42 +163,46 @@ export function AdminDashboard() {
         <section>
           <h2>Files you&rsquo;ve shared</h2>
           {!shares ? (
-            <p>Loading…</p>
+            <p className="hint">Loading…</p>
           ) : shares.length === 0 ? (
-            <p className="hint">Nothing shared yet.</p>
+            <div className="empty-state">Nothing shared yet.</div>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Recipient</th>
-                  <th>Files</th>
-                  <th>Size</th>
-                  <th>Created</th>
-                  <th>Status</th>
-                  <th>Downloaded?</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {shares.map((s) => (
-                  <tr key={s.id}>
-                    <td>
-                      {s.recipient ? `${s.recipient.firstName} ${s.recipient.lastName}` : "Unknown"}
-                    </td>
-                    <td>{s.files.map((f) => f.name).join(", ")}</td>
-                    <td>{formatBytes(s.totalSize)}</td>
-                    <td>{formatDate(s.createdAt)}</td>
-                    <td>{s.status === "ready" ? formatTimeLeft(s.expiresAt) : "Uploading…"}</td>
-                    <td>{s.firstDownloadAt ? `Yes (${formatDate(s.firstDownloadAt)})` : "No"}</td>
-                    <td>
-                      <button className="danger" onClick={() => void handleDeleteShare(s)}>
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <ul className="card-list">
+              {shares.map((s) => (
+                <li key={s.id} className="card">
+                  <div className="card-header">
+                    <span>
+                      {s.recipient ? `${s.recipient.firstName} ${s.recipient.lastName}` : "Unknown"} —{" "}
+                      {formatDate(s.createdAt)}
+                    </span>
+                    <span className="mono">
+                      {s.status === "ready" ? formatTimeLeft(s.expiresAt) : "Uploading…"}
+                    </span>
+                  </div>
+                  <ul className="file-items">
+                    {s.files.map((f) => (
+                      <FileItem
+                        key={f.fileId}
+                        name={f.name}
+                        size={f.size}
+                        right={
+                          f.downloadedAt ? (
+                            <StatusPill tone="success">Downloaded</StatusPill>
+                          ) : (
+                            <StatusPill tone="neutral">Not downloaded</StatusPill>
+                          )
+                        }
+                      />
+                    ))}
+                  </ul>
+                  <div className="card-actions">
+                    <button className="danger small" onClick={() => void handleDeleteShare(s)}>
+                      Delete
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
         </section>
       )}
@@ -182,53 +211,59 @@ export function AdminDashboard() {
         <section>
           <h2>Files sent to you</h2>
           {!uploads ? (
-            <p>Loading…</p>
+            <p className="hint">Loading…</p>
           ) : uploads.length === 0 ? (
-            <p className="hint">Nothing received yet.</p>
+            <div className="empty-state">Nothing received yet.</div>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>From</th>
-                  <th>Files</th>
-                  <th>Size</th>
-                  <th>Received</th>
-                  <th>Status</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {uploads.map((u) => (
-                  <tr key={u.id}>
-                    <td>{u.sender ? `${u.sender.firstName} ${u.sender.lastName}` : "Unknown"}</td>
-                    <td>
+            <ul className="card-list">
+              {uploads.map((u) => {
+                const readyCount = u.files.filter((f) => f.status === "ready").length;
+                return (
+                  <li key={u.id} className="card">
+                    <div className="card-header">
+                      <span>
+                        {u.sender ? `${u.sender.firstName} ${u.sender.lastName}` : "Unknown"} —{" "}
+                        {formatDate(u.createdAt)}
+                      </span>
+                      <span>{formatBytes(u.totalSize)}</span>
+                    </div>
+                    <ul className="file-items">
                       {u.files.map((f) => (
-                        <div key={f.fileId} className="file-row">
-                          <span>{f.name}</span>
-                          {f.status === "ready" && (
-                            <button onClick={() => void handleDownload(u, f.fileId)}>Download</button>
-                          )}
-                        </div>
+                        <FileItem
+                          key={f.fileId}
+                          name={f.name}
+                          size={f.size}
+                          right={
+                            f.status === "ready" ? (
+                              <button
+                                className="secondary small"
+                                onClick={() => void handleDownload(u, f.fileId)}
+                              >
+                                Download
+                              </button>
+                            ) : (
+                              <StatusPill tone="pending">Uploading…</StatusPill>
+                            )
+                          }
+                        />
                       ))}
-                    </td>
-                    <td>{formatBytes(u.totalSize)}</td>
-                    <td>{formatDate(u.createdAt)}</td>
-                    <td>
-                      {u.status === "ready"
-                        ? u.adminDownloadedAt
-                          ? "Downloaded"
-                          : "New"
-                        : "Uploading…"}
-                    </td>
-                    <td>
-                      <button className="danger" onClick={() => void handleDeleteUpload(u)}>
+                    </ul>
+                    <div className="card-actions" style={{ justifyContent: "space-between" }}>
+                      {readyCount > 1 ? (
+                        <button className="secondary small" onClick={() => void handleDownloadAll(u)}>
+                          Download all ({readyCount})
+                        </button>
+                      ) : (
+                        <span />
+                      )}
+                      <button className="danger small" onClick={() => void handleDeleteUpload(u)}>
                         Delete
                       </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </section>
       )}

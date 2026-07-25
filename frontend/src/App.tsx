@@ -17,10 +17,15 @@ export function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <h1>Secure Transfer</h1>
+        <div className="wordmark">
+          <span className="wordmark-dot" />
+          <h1>Secure Transfer</h1>
+        </div>
         <div className="app-header-right">
-          <span className="hint">{email}</span>
-          <button onClick={() => void signOut()}>Sign out</button>
+          <span className="hint mono">{email}</span>
+          <button className="secondary" onClick={() => void signOut()}>
+            Sign out
+          </button>
         </div>
       </header>
       <main>{isAdmin ? <AdminDashboard /> : <RecipientDashboard />}</main>

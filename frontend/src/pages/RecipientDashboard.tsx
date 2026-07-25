@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../lib/api";
-import { triggerBrowserDownload, uploadFiles } from "../lib/upload";
-import { formatBytes, formatDate, formatTimeLeft } from "../lib/format";
+import { downloadAllStaggered, triggerBrowserDownload, uploadFiles } from "../lib/upload";
+import { formatDate, formatTimeLeft } from "../lib/format";
+import { FilePicker } from "../components/FilePicker";
+import { FileItem } from "../components/FileItem";
+import { ProgressBar } from "../components/ProgressBar";
+import { StatusPill } from "../components/StatusPill";
 import type { PresignedFileUpload, ShareGroup, UploadGroup } from "../types";
 
 function errorMessage(err: unknown): string {
@@ -49,6 +53,19 @@ export function RecipientDashboard() {
     }
   }
 
+  async function handleDownloadAll(share: ShareGroup) {
+    try {
+      const readyFiles = share.files.filter((f) => f.status === "ready");
+      const urls = await Promise.all(
+        readyFiles.map((f) => api.meDownloadShareFile(share.id, f.fileId).then((r) => r.url))
+      );
+      downloadAllStaggered(urls);
+      void loadShares();
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
   async function handleUploadSubmit(e: FormEvent) {
     e.preventDefault();
     if (files.length === 0) return;
@@ -62,6 +79,8 @@ export function RecipientDashboard() {
       setProgress(Object.fromEntries(created.map((u) => [u.fileId, 0])));
       await uploadFiles(files, created, setProgress);
       setFiles([]);
+      setPresigned(null);
+      setProgress(null);
       void loadUploads();
     } catch (err) {
       setError(errorMessage(err));
@@ -77,32 +96,50 @@ export function RecipientDashboard() {
       <section>
         <h2>Files shared with you</h2>
         {!shares ? (
-          <p>Loading…</p>
+          <p className="hint">Loading…</p>
         ) : shares.length === 0 ? (
-          <p className="hint">Nothing here yet.</p>
+          <div className="empty-state">Nothing shared with you yet.</div>
         ) : (
           <ul className="card-list">
-            {shares.map((s) => (
-              <li key={s.id} className="card">
-                <div className="card-header">
-                  <span>{formatDate(s.createdAt)}</span>
-                  <span className="badge">{formatTimeLeft(s.expiresAt)}</span>
-                </div>
-                <ul className="file-list">
-                  {s.files.map((f) => (
-                    <li key={f.fileId}>
-                      <span className="file-name">{f.name}</span>
-                      <span className="file-size">{formatBytes(f.size)}</span>
-                      {f.status === "ready" ? (
-                        <button onClick={() => void handleDownload(s.id, f.fileId)}>Download</button>
-                      ) : (
-                        <span className="badge badge-pending">uploading…</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </li>
-            ))}
+            {shares.map((s) => {
+              const readyCount = s.files.filter((f) => f.status === "ready").length;
+              return (
+                <li key={s.id} className="card">
+                  <div className="card-header">
+                    <span>{formatDate(s.createdAt)}</span>
+                    <span className="mono">{formatTimeLeft(s.expiresAt)}</span>
+                  </div>
+                  <ul className="file-items">
+                    {s.files.map((f) => (
+                      <FileItem
+                        key={f.fileId}
+                        name={f.name}
+                        size={f.size}
+                        right={
+                          f.status === "ready" ? (
+                            <button
+                              className="secondary small"
+                              onClick={() => void handleDownload(s.id, f.fileId)}
+                            >
+                              Download
+                            </button>
+                          ) : (
+                            <StatusPill tone="pending">Uploading…</StatusPill>
+                          )
+                        }
+                      />
+                    ))}
+                  </ul>
+                  {readyCount > 1 && (
+                    <div className="card-actions">
+                      <button className="secondary small" onClick={() => void handleDownloadAll(s)}>
+                        Download all ({readyCount})
+                      </button>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -110,21 +147,21 @@ export function RecipientDashboard() {
       <section>
         <h2>Send files</h2>
         <form onSubmit={handleUploadSubmit}>
-          <input
-            type="file"
-            multiple
-            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-          />
+          {!presigned && <FilePicker files={files} onChange={setFiles} disabled={busy} />}
+
           {presigned && progress && (
-            <ul className="file-list">
+            <ul className="file-items" style={{ width: "100%" }}>
               {presigned.map((u) => (
-                <li key={u.fileId}>
-                  <span className="file-name">{u.name}</span>
-                  <span>{Math.round((progress[u.fileId] ?? 0) * 100)}%</span>
-                </li>
+                <FileItem
+                  key={u.fileId}
+                  name={u.name}
+                  size={files.find((f) => f.name === u.name)?.size ?? 0}
+                  right={<ProgressBar value={progress[u.fileId] ?? 0} />}
+                />
               ))}
             </ul>
           )}
+
           <button type="submit" disabled={busy || files.length === 0}>
             {busy ? "Uploading…" : `Send ${files.length || ""} file${files.length === 1 ? "" : "s"}`}
           </button>
@@ -134,29 +171,26 @@ export function RecipientDashboard() {
       <section>
         <h2>Your upload history</h2>
         {!uploads ? (
-          <p>Loading…</p>
+          <p className="hint">Loading…</p>
         ) : uploads.length === 0 ? (
-          <p className="hint">You haven&rsquo;t sent anything yet.</p>
+          <div className="empty-state">You haven&rsquo;t sent anything yet.</div>
         ) : (
           <ul className="card-list">
             {uploads.map((u) => (
               <li key={u.id} className="card">
                 <div className="card-header">
                   <span>{formatDate(u.createdAt)}</span>
-                  <span className="badge">
-                    {u.status === "ready"
-                      ? u.adminDownloadedAt
-                        ? "Downloaded"
-                        : "Delivered"
-                      : "Uploading…"}
-                  </span>
+                  {u.status === "ready" ? (
+                    <StatusPill tone={u.adminDownloadedAt ? "success" : "neutral"}>
+                      {u.adminDownloadedAt ? "Downloaded" : "Delivered"}
+                    </StatusPill>
+                  ) : (
+                    <StatusPill tone="pending">Uploading…</StatusPill>
+                  )}
                 </div>
-                <ul className="file-list">
+                <ul className="file-items">
                   {u.files.map((f) => (
-                    <li key={f.fileId}>
-                      <span className="file-name">{f.name}</span>
-                      <span className="file-size">{formatBytes(f.size)}</span>
-                    </li>
+                    <FileItem key={f.fileId} name={f.name} size={f.size} />
                   ))}
                 </ul>
               </li>

@@ -1,3 +1,4 @@
+import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import type { S3Handler } from "aws-lambda";
 import { db } from "./db";
 import { sendShareReadyEmail, sendUploadReadyEmail } from "./email";
@@ -9,8 +10,16 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL!;
  * Marks the file matching `key` as ready within its group. If this was the
  * last pending file in the group, flips the group to `ready` and returns the
  * (locally updated) group so the caller can send a single notification.
- * Returns null if there's nothing to notify about (unknown group/file, or
- * the group isn't fully ready yet).
+ * Returns null if there's nothing to notify about (unknown group/file, the
+ * file was already marked ready by a prior/duplicate S3 event, or the group
+ * isn't fully ready yet).
+ *
+ * `readyCount` is incremented with an atomic `ADD`, not a read-modify-write —
+ * S3 can deliver ObjectCreated events for a multi-file group within
+ * milliseconds of each other, and a plain "read current count, write count+1"
+ * loses updates when two invocations run concurrently (both read the same
+ * starting value). The conditional check on the file's own status makes the
+ * whole thing idempotent against duplicate event delivery.
  */
 async function markFileReady<T extends ShareGroup | UploadGroup>(
   items: T[],
@@ -20,22 +29,39 @@ async function markFileReady<T extends ShareGroup | UploadGroup>(
   const group = items.find((i) => i.id === groupId);
   if (!group) return null;
   const fileIdx = group.files.findIndex((f) => f.s3Key === key);
-  if (fileIdx === -1 || group.files[fileIdx].status === "ready") return null;
+  if (fileIdx === -1) return null;
 
-  const readyCount = group.readyCount + 1;
-  const allReady = readyCount >= group.fileCount;
   const names = { "#files": "files", "#status": "status" };
-  let expr = `SET #files[${fileIdx}].#status = :ready, readyCount = :readyCount`;
-  if (allReady) expr += ", #status = :ready";
+  let attributes: Record<string, unknown> | undefined;
+  try {
+    attributes = await db.update(
+      group.pk,
+      group.sk,
+      `SET #files[${fileIdx}].#status = :ready ADD readyCount :one`,
+      { ":ready": "ready", ":one": 1 },
+      names,
+      {
+        condition: `#files[${fileIdx}].#status <> :ready`,
+        returnValues: "ALL_NEW",
+      }
+    );
+  } catch (err) {
+    if (err instanceof ConditionalCheckFailedException) return null;
+    throw err;
+  }
+
+  const newReadyCount = Number(attributes?.readyCount);
+  const fileCount = Number(attributes?.fileCount);
+  if (!(newReadyCount >= fileCount)) return null;
+
   await db.update(
     group.pk,
     group.sk,
-    expr,
-    { ":ready": "ready", ":readyCount": readyCount },
-    names
+    "SET #status = :ready",
+    { ":ready": "ready" },
+    { "#status": "status" }
   );
-
-  return allReady ? { ...group, status: "ready" as const } : null;
+  return { ...group, status: "ready" as const, readyCount: newReadyCount };
 }
 
 export const handler: S3Handler = async (event) => {
@@ -53,7 +79,7 @@ export const handler: S3Handler = async (event) => {
           await sendShareReadyEmail(
             recipient.email,
             recipient.firstName,
-            completed.fileCount,
+            completed.files.map((f) => f.name),
             completed.expiresAt
           );
         }
@@ -66,7 +92,7 @@ export const handler: S3Handler = async (event) => {
         await sendUploadReadyEmail(
           ADMIN_EMAIL,
           sender ? `${sender.firstName} ${sender.lastName}` : "A user",
-          completed.fileCount
+          completed.files.map((f) => f.name)
         );
       }
     }

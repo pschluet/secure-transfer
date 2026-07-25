@@ -62,7 +62,10 @@ export function Login() {
   return (
     <div className="auth-screen">
       <div className="auth-card">
-        <h1>Secure Transfer</h1>
+        <div className="wordmark">
+          <span className="wordmark-dot" />
+          <h1>Secure Transfer</h1>
+        </div>
         {step === "email" ? (
           <form onSubmit={handleEmailSubmit}>
             <label htmlFor="email">Email address</label>

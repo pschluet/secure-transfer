@@ -5,6 +5,31 @@ const SITE_URL = process.env.SITE_URL!;
 
 const ses = new SESv2Client({});
 
+const CENTRAL_DATE_TIME = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/Chicago",
+  dateStyle: "long",
+  timeStyle: "short",
+});
+const CENTRAL_TZ_NAME = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/Chicago",
+  timeZoneName: "short",
+});
+
+// dateStyle/timeStyle can't be combined with timeZoneName in one formatter
+// (ECMA-402 rejects mixing style options with explicit component options),
+// so the zone abbreviation (CDT/CST) is pulled from a second formatter.
+function formatCentral(iso: string): string {
+  const date = new Date(iso);
+  const zone = CENTRAL_TZ_NAME.formatToParts(date).find(
+    (p) => p.type === "timeZoneName"
+  )?.value;
+  return `${CENTRAL_DATE_TIME.format(date)} ${zone}`;
+}
+
+function formatFileList(fileNames: string[]): string {
+  return fileNames.map((name) => `  - ${name}`).join("\n");
+}
+
 async function send(to: string, subject: string, bodyText: string): Promise<void> {
   await ses.send(
     new SendEmailCommand({
@@ -23,14 +48,14 @@ async function send(to: string, subject: string, bodyText: string): Promise<void
 export async function sendShareReadyEmail(
   to: string,
   firstName: string,
-  fileCount: number,
+  fileNames: string[],
   expiresAt: string
 ): Promise<void> {
-  const fileWord = fileCount === 1 ? "file" : "files";
+  const fileWord = fileNames.length === 1 ? "file" : "files";
   await send(
     to,
     "Files shared with you on Secure Transfer",
-    `Hi ${firstName},\n\nPaul shared ${fileCount} ${fileWord} with you. They're available until ${expiresAt}.\n\nLog in to download: ${SITE_URL}\n`
+    `Hi ${firstName},\n\nPaul shared ${fileNames.length} ${fileWord} with you:\n\n${formatFileList(fileNames)}\n\nThey're available until ${formatCentral(expiresAt)}.\n\nLog in to download: ${SITE_URL}\n`
   );
 }
 
@@ -45,12 +70,12 @@ export async function sendUserInvitedEmail(to: string, firstName: string): Promi
 export async function sendUploadReadyEmail(
   to: string,
   senderName: string,
-  fileCount: number
+  fileNames: string[]
 ): Promise<void> {
-  const fileWord = fileCount === 1 ? "file" : "files";
+  const fileWord = fileNames.length === 1 ? "file" : "files";
   await send(
     to,
     "New files uploaded on Secure Transfer",
-    `${senderName} uploaded ${fileCount} ${fileWord} for you.\n\nLog in to download: ${SITE_URL}\n`
+    `${senderName} uploaded ${fileNames.length} ${fileWord} for you:\n\n${formatFileList(fileNames)}\n\nLog in to download: ${SITE_URL}\n`
   );
 }

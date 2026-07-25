@@ -66,16 +66,23 @@ export const db = {
     sk: string,
     updateExpression: string,
     values: Record<string, unknown>,
-    names?: Record<string, string>
-  ): Promise<void> {
-    await client.send(
+    names?: Record<string, string>,
+    options?: {
+      condition?: string;
+      returnValues?: "NONE" | "ALL_NEW" | "UPDATED_NEW";
+    }
+  ): Promise<Record<string, unknown> | undefined> {
+    const res = await client.send(
       new UpdateCommand({
         TableName: TABLE_NAME,
         Key: { pk, sk },
         UpdateExpression: updateExpression,
         ExpressionAttributeValues: values,
         ExpressionAttributeNames: names,
+        ConditionExpression: options?.condition,
+        ReturnValues: options?.returnValues,
       })
     );
+    return res.Attributes;
   },
 };

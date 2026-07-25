@@ -3,6 +3,9 @@ import type { FormEvent } from "react";
 import { api } from "../lib/api";
 import { uploadFiles } from "../lib/upload";
 import type { PresignedFileUpload, UserProfile } from "../types";
+import { FilePicker } from "./FilePicker";
+import { FileItem } from "./FileItem";
+import { ProgressBar } from "./ProgressBar";
 
 const EXPIRY_OPTIONS = [
   { label: "1 hour", hours: 1 },
@@ -53,31 +56,41 @@ export function ShareFilesForm({
       <p className="hint">
         Sharing with {recipient.firstName} {recipient.lastName} ({recipient.email})
       </p>
-      <input type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []))} />
-      <label htmlFor="expiry">Expires in</label>
-      <select
-        id="expiry"
-        value={expiresInHours}
-        onChange={(e) => setExpiresInHours(Number(e.target.value))}
-      >
-        {EXPIRY_OPTIONS.map((o) => (
-          <option key={o.hours} value={o.hours}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+
+      {!presigned && <FilePicker files={files} onChange={setFiles} />}
+
       {presigned && progress && (
-        <ul className="file-list">
+        <ul className="file-items" style={{ width: "100%" }}>
           {presigned.map((u) => (
-            <li key={u.fileId}>
-              <span className="file-name">{u.name}</span>
-              <span>{Math.round((progress[u.fileId] ?? 0) * 100)}%</span>
-            </li>
+            <FileItem
+              key={u.fileId}
+              name={u.name}
+              size={files.find((f) => f.name === u.name)?.size ?? 0}
+              right={<ProgressBar value={progress[u.fileId] ?? 0} />}
+            />
           ))}
         </ul>
       )}
+
+      {!presigned && (
+        <>
+          <label htmlFor="expiry">Expires in</label>
+          <select
+            id="expiry"
+            value={expiresInHours}
+            onChange={(e) => setExpiresInHours(Number(e.target.value))}
+          >
+            {EXPIRY_OPTIONS.map((o) => (
+              <option key={o.hours} value={o.hours}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={busy || files.length === 0}>
+      <button type="submit" disabled={busy || files.length === 0 || !!presigned}>
         {busy ? "Uploading…" : `Share ${files.length || ""} file${files.length === 1 ? "" : "s"}`}
       </button>
     </form>
