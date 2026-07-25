@@ -281,6 +281,10 @@ export class SecureTransferStack extends Stack {
       clientIds: ["sts.amazonaws.com"],
     });
 
+    // GitHub embeds immutable owner/repo IDs in the sub claim (e.g.
+    // "repo:owner@123/repo@456:ref:...") rather than the plain
+    // "repo:owner/repo:*" form, so match both to be safe.
+    const [githubOwner, githubRepoName] = githubRepo.split("/");
     const deployRole = new iam.Role(this, "GitHubDeployRole", {
       roleName: "secure-transfer-github-deploy",
       assumedBy: new iam.WebIdentityPrincipal(githubProvider.openIdConnectProviderArn, {
@@ -288,7 +292,10 @@ export class SecureTransferStack extends Stack {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
         },
         StringLike: {
-          "token.actions.githubusercontent.com:sub": `repo:${githubRepo}:*`,
+          "token.actions.githubusercontent.com:sub": [
+            `repo:${githubRepo}:*`,
+            `repo:${githubOwner}@*/${githubRepoName}@*:*`,
+          ],
         },
       }),
       maxSessionDuration: Duration.hours(1),
