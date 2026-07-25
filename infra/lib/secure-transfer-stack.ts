@@ -166,7 +166,11 @@ export class SecureTransferStack extends Stack {
     filesBucket.grantDelete(apiFn);
     apiFn.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ["cognito-idp:AdminCreateUser"],
+        actions: [
+          "cognito-idp:AdminCreateUser",
+          "cognito-idp:AdminUpdateUserAttributes",
+          "cognito-idp:AdminDeleteUser",
+        ],
         resources: [userPool.userPoolArn],
       })
     );

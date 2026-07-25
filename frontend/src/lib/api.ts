@@ -43,6 +43,9 @@ export const api = {
   adminListUsers: () => request<AdminUserRow[]>("/admin/users"),
   adminCreateUser: (body: { firstName: string; lastName: string; email: string }) =>
     request<UserProfile>("/admin/users", { method: "POST", body: JSON.stringify(body) }),
+  adminUpdateUser: (sub: string, body: { firstName: string; lastName: string }) =>
+    request<UserProfile>(`/admin/users/${sub}`, { method: "PATCH", body: JSON.stringify(body) }),
+  adminDeleteUser: (sub: string) => request<void>(`/admin/users/${sub}`, { method: "DELETE" }),
 
   adminListShares: () => request<ShareGroupWithRecipient[]>("/admin/shares"),
   adminCreateShare: (recipientSub: string, files: FileMeta[], expiresInHours: number) =>

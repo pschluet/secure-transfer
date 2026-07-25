@@ -267,6 +267,11 @@ input::placeholder {
   color: var(--text-dim);
 }
 
+input:disabled {
+  color: var(--text-dim);
+  cursor: not-allowed;
+}
+
 label {
   display: block;
   font-size: 0.8rem;
@@ -575,6 +580,12 @@ tbody tr:hover {
   display: flex;
   justify-content: flex-end;
   margin-top: 0.6rem;
+}
+
+.button-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 /* --- file items (grid: name | size | action, always aligned) --- */

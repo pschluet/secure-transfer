@@ -5,6 +5,8 @@ import { ulid } from "ulid";
 import { z } from "zod";
 import {
   AdminCreateUserCommand,
+  AdminDeleteUserCommand,
+  AdminUpdateUserAttributesCommand,
   CognitoIdentityProviderClient,
 } from "@aws-sdk/client-cognito-identity-provider";
 import { db } from "./db";
@@ -37,7 +39,7 @@ app.use(
   cors({
     origin: process.env.ALLOWED_ORIGIN ?? "*",
     allowHeaders: ["Authorization", "Content-Type"],
-    allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+    allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   })
 );
 
@@ -145,6 +147,63 @@ app.get("/admin/users", async (c) => {
     }))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   return c.json(result);
+});
+
+const updateUserSchema = z.object({
+  firstName: z.string().min(1).max(100),
+  lastName: z.string().min(1).max(100),
+});
+
+app.patch("/admin/users/:sub", async (c) => {
+  const sub = c.req.param("sub");
+  const profile = await db.get<UserProfile>(`USER#${sub}`, "PROFILE");
+  if (!profile) return c.json({ error: "User not found" }, 404);
+
+  const body = updateUserSchema.parse(await c.req.json());
+
+  await cognito.send(
+    new AdminUpdateUserAttributesCommand({
+      UserPoolId: USER_POOL_ID,
+      Username: profile.email,
+      UserAttributes: [
+        { Name: "given_name", Value: body.firstName },
+        { Name: "family_name", Value: body.lastName },
+      ],
+    })
+  );
+
+  const updated = await db.update(
+    profile.pk,
+    profile.sk,
+    "SET firstName = :fn, lastName = :ln",
+    { ":fn": body.firstName, ":ln": body.lastName },
+    undefined,
+    { returnValues: "ALL_NEW" }
+  );
+  return c.json(updated);
+});
+
+app.delete("/admin/users/:sub", async (c) => {
+  const sub = c.req.param("sub");
+  const profile = await db.get<UserProfile>(`USER#${sub}`, "PROFILE");
+  if (!profile) return c.json({ error: "User not found" }, 404);
+
+  const items = await db.queryByPk<ShareGroup | UploadGroup>(`USER#${sub}`);
+  const shares = items.filter((i): i is ShareGroup => i.sk.startsWith("SHARE#"));
+  const uploads = items.filter((i): i is UploadGroup => i.sk.startsWith("UPLOAD#"));
+
+  await Promise.all(
+    [...shares, ...uploads].map(async (group) => {
+      await Promise.all(group.files.map((f) => deleteObject(f.s3Key)));
+      await db.delete(group.pk, group.sk);
+    })
+  );
+
+  await cognito.send(
+    new AdminDeleteUserCommand({ UserPoolId: USER_POOL_ID, Username: profile.email })
+  );
+  await db.delete(profile.pk, profile.sk);
+  return c.json({ ok: true });
 });
 
 // ---------------------------------------------------------------------------

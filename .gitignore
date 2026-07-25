@@ -11,3 +11,4 @@ frontend/.env.*.local
 *.log
 .aws-sam/
 outputs.json
+security-findings.md

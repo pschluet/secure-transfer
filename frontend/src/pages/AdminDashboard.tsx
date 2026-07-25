@@ -5,6 +5,7 @@ import { downloadAllAsZip } from "../lib/zip";
 import { pollAfterDelays } from "../lib/poll";
 import { formatBytes, formatDate, formatTimeLeft, zipFilename } from "../lib/format";
 import { CreateUserForm } from "../components/CreateUserForm";
+import { EditUserForm } from "../components/EditUserForm";
 import { ShareFilesForm } from "../components/ShareFilesForm";
 import { Modal } from "../components/Modal";
 import { FileItem } from "../components/FileItem";
@@ -24,6 +25,7 @@ export function AdminDashboard() {
   const [shares, setShares] = useState<ShareGroupWithRecipient[] | null>(null);
   const [uploads, setUploads] = useState<UploadGroupWithSender[] | null>(null);
   const [shareTarget, setShareTarget] = useState<UserProfile | null>(null);
+  const [editTarget, setEditTarget] = useState<UserProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [zippingId, setZippingId] = useState<string | null>(null);
 
@@ -54,6 +56,23 @@ export function AdminDashboard() {
     void loadShares();
     void loadUploads();
   }, []);
+
+  async function handleDeleteUser(u: AdminUserRow) {
+    if (
+      !confirm(
+        `Delete ${u.firstName} ${u.lastName}? This removes their account and all files shared with or sent by them, permanently.`
+      )
+    )
+      return;
+    try {
+      await api.adminDeleteUser(u.sub);
+      void loadUsers();
+      void loadShares();
+      void loadUploads();
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
 
   async function handleDeleteShare(s: ShareGroupWithRecipient) {
     if (!confirm("Delete this share? This removes the files permanently.")) return;
@@ -161,9 +180,17 @@ export function AdminDashboard() {
                       </StatusPill>
                     </td>
                     <td>
-                      <button className="secondary small" onClick={() => setShareTarget(u)}>
-                        Share files
-                      </button>
+                      <div className="button-row">
+                        <button className="secondary small" onClick={() => setShareTarget(u)}>
+                          Share files
+                        </button>
+                        <button className="secondary small" onClick={() => setEditTarget(u)}>
+                          Edit
+                        </button>
+                        <button className="danger small" onClick={() => void handleDeleteUser(u)}>
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -304,6 +331,18 @@ export function AdminDashboard() {
               // processes the upload a few seconds later — poll a couple
               // more times so it shows up without a manual refresh.
               pollAfterDelays(() => void loadShares());
+            }}
+          />
+        </Modal>
+      )}
+
+      {editTarget && (
+        <Modal title="Edit user" onClose={() => setEditTarget(null)}>
+          <EditUserForm
+            user={editTarget}
+            onSaved={() => {
+              setEditTarget(null);
+              void loadUsers();
             }}
           />
         </Modal>
