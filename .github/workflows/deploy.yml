@@ -1,0 +1,72 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  # Deterministic — this is the fixed roleName set in the CDK stack. The role
+  # itself is created by CDK, so the very first deploy must be run locally
+  # (see infra/README.md) before this workflow can assume it.
+  DEPLOY_ROLE_ARN: arn:aws:iam::435432815368:role/secure-transfer-github-deploy
+  STACK_NAME: SecureTransferStack
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy infrastructure
+        working-directory: infra
+        run: npx cdk deploy --require-approval never --outputs-file outputs.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          export VITE_USER_POOL_ID=$(jq -r '.["${{ env.STACK_NAME }}"].UserPoolId' ../infra/outputs.json)
+          export VITE_USER_POOL_CLIENT_ID=$(jq -r '.["${{ env.STACK_NAME }}"].UserPoolClientId' ../infra/outputs.json)
+          npm run build
+
+      - name: Sync SPA to S3
+        working-directory: infra
+        run: |
+          SITE_BUCKET=$(jq -r '.["${{ env.STACK_NAME }}"].SiteBucketName' outputs.json)
+          aws s3 sync ../frontend/dist "s3://$SITE_BUCKET" --delete
+
+      - name: Invalidate CloudFront cache
+        working-directory: infra
+        run: |
+          DISTRIBUTION_ID=$(jq -r '.["${{ env.STACK_NAME }}"].DistributionId' outputs.json)
+          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*"
+
+      - name: Summary
+        working-directory: infra
+        run: |
+          echo "### Deployed :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          echo "$(jq -r '.["${{ env.STACK_NAME }}"].SiteUrl' outputs.json)" >> "$GITHUB_STEP_SUMMARY"

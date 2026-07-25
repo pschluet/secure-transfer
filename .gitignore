@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+cdk.out/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.local
+frontend/.env
+frontend/.env.*.local
+*.log
+.aws-sam/

@@ -1,0 +1,17 @@
+{
+  "name": "secure-transfer",
+  "private": true,
+  "workspaces": [
+    "infra",
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "synth": "npm run synth -w infra",
+    "deploy": "npm run deploy -w infra",
+    "build:frontend": "npm run build -w frontend"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
