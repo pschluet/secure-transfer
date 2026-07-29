@@ -39,6 +39,11 @@ export interface ShareGroup {
   status: GroupStatus;
   firstDownloadAt?: string;
   lastDownloadAt?: string;
+  /** The admin who created this share — not necessarily `recipientSub`'s
+   * counterpart, since multiple admins may exist. Optional for backward
+   * compatibility with items written before this field existed. */
+  createdBySub?: string;
+  createdByEmail?: string;
   gsi1pk: "SHARES";
   gsi1sk: string; // createdAt
 }
@@ -64,4 +69,23 @@ export interface PresignedFileUpload {
   fileId: string;
   name: string;
   uploadUrl: string;
+}
+
+/** An append-only record of a file being uploaded (landed in S3) or
+ * downloaded, for the admin-facing audit log. */
+export interface AuditLog {
+  pk: string; // AUDIT#<id>
+  sk: "AUDIT";
+  id: string;
+  action: "upload" | "download";
+  context: "share" | "upload";
+  fileName: string;
+  fileId: string;
+  size?: number;
+  actorSub: string;
+  actorEmail: string;
+  actorName?: string;
+  timestamp: string; // ISO
+  gsi1pk: "AUDIT";
+  gsi1sk: string; // `${timestamp}#${id}` — unique + chronological
 }

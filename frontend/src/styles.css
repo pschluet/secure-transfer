@@ -491,6 +491,50 @@ tbody tr:hover {
   background: rgba(255, 255, 255, 0.02);
 }
 
+.sort-header {
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+
+.sort-header:hover {
+  filter: none;
+  color: var(--text);
+}
+
+/* --- audit log --- */
+
+.audit-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6rem;
+  margin-bottom: 1.2rem;
+}
+
+.audit-filters > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.audit-filters input {
+  min-width: 160px;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
 /* --- status pill --- */
 
 .pill {

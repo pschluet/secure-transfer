@@ -11,9 +11,16 @@ import { Modal } from "../components/Modal";
 import { FileItem } from "../components/FileItem";
 import { StatusPill } from "../components/StatusPill";
 import { RefreshButton } from "../components/RefreshButton";
-import type { AdminUserRow, ShareGroupWithRecipient, UploadGroupWithSender, UserProfile } from "../types";
+import type {
+  AdminUserRow,
+  AuditPage,
+  ShareGroupWithRecipient,
+  UploadGroupWithSender,
+  UserProfile,
+} from "../types";
 
-type Tab = "users" | "shares" | "uploads";
+type Tab = "users" | "shares" | "uploads" | "audit";
+const AUDIT_PAGE_SIZE = 25;
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong";
@@ -28,6 +35,14 @@ export function AdminDashboard() {
   const [editTarget, setEditTarget] = useState<UserProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [zippingId, setZippingId] = useState<string | null>(null);
+
+  const [audit, setAudit] = useState<AuditPage | null>(null);
+  const [auditFileNameInput, setAuditFileNameInput] = useState("");
+  const [auditFileName, setAuditFileName] = useState("");
+  const [auditFrom, setAuditFrom] = useState("");
+  const [auditTo, setAuditTo] = useState("");
+  const [auditSort, setAuditSort] = useState<"asc" | "desc">("desc");
+  const [auditPage, setAuditPage] = useState(1);
 
   async function loadUsers() {
     try {
@@ -50,12 +65,55 @@ export function AdminDashboard() {
       setError(errorMessage(err));
     }
   }
+  async function loadAudit() {
+    try {
+      setAudit(
+        await api.adminListAudit({
+          page: auditPage,
+          pageSize: AUDIT_PAGE_SIZE,
+          sort: auditSort,
+          fileName: auditFileName,
+          from: auditFrom,
+          to: auditTo,
+        })
+      );
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
 
   useEffect(() => {
     void loadUsers();
     void loadShares();
     void loadUploads();
   }, []);
+
+  // Debounce the file-name filter so typing doesn't fire a request per
+  // keystroke; every other audit filter/sort/page change fetches immediately.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setAuditFileName(auditFileNameInput);
+      setAuditPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [auditFileNameInput]);
+
+  useEffect(() => {
+    void loadAudit();
+  }, [auditFileName, auditFrom, auditTo, auditSort, auditPage]);
+
+  function handleAuditSortToggle() {
+    setAuditSort((s) => (s === "desc" ? "asc" : "desc"));
+    setAuditPage(1);
+  }
+
+  function handleAuditClearFilters() {
+    setAuditFileNameInput("");
+    setAuditFileName("");
+    setAuditFrom("");
+    setAuditTo("");
+    setAuditPage(1);
+  }
 
   async function handleDeleteUser(u: AdminUserRow) {
     if (
@@ -135,6 +193,9 @@ export function AdminDashboard() {
         </button>
         <button className={tab === "uploads" ? "active" : ""} onClick={() => setTab("uploads")}>
           Files received
+        </button>
+        <button className={tab === "audit" ? "active" : ""} onClick={() => setTab("audit")}>
+          Audit log
         </button>
       </nav>
       {error && <p className="error">{error}</p>}
@@ -315,6 +376,114 @@ export function AdminDashboard() {
                 );
               })}
             </ul>
+          )}
+        </section>
+      )}
+
+      {tab === "audit" && (
+        <section>
+          <div className="section-header">
+            <h2>Audit log</h2>
+            <RefreshButton onRefresh={loadAudit} label="Refresh audit log" />
+          </div>
+
+          <div className="audit-filters">
+            <div>
+              <label htmlFor="audit-filename">File name</label>
+              <input
+                id="audit-filename"
+                type="text"
+                placeholder="Filter by file name…"
+                value={auditFileNameInput}
+                onChange={(e) => setAuditFileNameInput(e.target.value)}
+              />
+            </div>
+            <div>
+              <label htmlFor="audit-from">From</label>
+              <input
+                id="audit-from"
+                type="date"
+                value={auditFrom}
+                onChange={(e) => {
+                  setAuditFrom(e.target.value);
+                  setAuditPage(1);
+                }}
+              />
+            </div>
+            <div>
+              <label htmlFor="audit-to">To</label>
+              <input
+                id="audit-to"
+                type="date"
+                value={auditTo}
+                onChange={(e) => {
+                  setAuditTo(e.target.value);
+                  setAuditPage(1);
+                }}
+              />
+            </div>
+            <button className="secondary small" onClick={handleAuditClearFilters}>
+              Clear filters
+            </button>
+          </div>
+
+          {!audit ? (
+            <p className="hint">Loading…</p>
+          ) : audit.entries.length === 0 ? (
+            <div className="empty-state">No activity yet.</div>
+          ) : (
+            <>
+              <table>
+                <thead>
+                  <tr>
+                    <th>
+                      <button className="sort-header" onClick={handleAuditSortToggle}>
+                        Date {auditSort === "desc" ? "↓" : "↑"}
+                      </button>
+                    </th>
+                    <th>Action</th>
+                    <th>Type</th>
+                    <th>File</th>
+                    <th>User</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {audit.entries.map((e) => (
+                    <tr key={e.id}>
+                      <td>{formatDate(e.timestamp)}</td>
+                      <td data-label="Action">
+                        <StatusPill tone={e.action === "download" ? "success" : "neutral"}>
+                          {e.action === "download" ? "Downloaded" : "Uploaded"}
+                        </StatusPill>
+                      </td>
+                      <td data-label="Type">{e.context === "share" ? "Share" : "Upload"}</td>
+                      <td data-label="File">{e.fileName}</td>
+                      <td data-label="User">{e.actorName ?? e.actorEmail}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div className="pagination">
+                <button
+                  className="secondary small"
+                  disabled={auditPage <= 1}
+                  onClick={() => setAuditPage((p) => Math.max(1, p - 1))}
+                >
+                  Previous
+                </button>
+                <span className="hint">
+                  Page {audit.page} of {Math.max(1, Math.ceil(audit.total / audit.pageSize))}
+                </span>
+                <button
+                  className="secondary small"
+                  disabled={auditPage >= Math.ceil(audit.total / audit.pageSize)}
+                  onClick={() => setAuditPage((p) => p + 1)}
+                >
+                  Next
+                </button>
+              </div>
+            </>
           )}
         </section>
       )}

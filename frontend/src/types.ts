@@ -64,3 +64,32 @@ export interface PresignedFileUpload {
   name: string;
   uploadUrl: string;
 }
+
+export interface AuditLog {
+  id: string;
+  action: "upload" | "download";
+  context: "share" | "upload";
+  fileName: string;
+  fileId: string;
+  size?: number;
+  actorSub: string;
+  actorEmail: string;
+  actorName?: string;
+  timestamp: string;
+}
+
+export interface AuditPage {
+  entries: AuditLog[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface AuditQuery {
+  page?: number;
+  pageSize?: number;
+  sort?: "asc" | "desc";
+  fileName?: string;
+  from?: string;
+  to?: string;
+}

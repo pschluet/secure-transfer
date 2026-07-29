@@ -1,6 +1,8 @@
 import { fetchAuthSession } from "aws-amplify/auth";
 import type {
   AdminUserRow,
+  AuditPage,
+  AuditQuery,
   PresignedFileUpload,
   ShareGroup,
   ShareGroupWithRecipient,
@@ -37,6 +39,15 @@ export interface FileMeta {
   size: number;
 }
 
+function toQueryString(params: Record<string, string | number | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== "") search.set(key, String(value));
+  }
+  const qs = search.toString();
+  return qs ? `?${qs}` : "";
+}
+
 export const api = {
   me: () => request<UserProfile | null>("/me"),
 
@@ -57,6 +68,18 @@ export const api = {
     request<void>(`/admin/users/${recipientSub}/shares/${id}`, { method: "DELETE" }),
 
   adminListUploads: () => request<UploadGroupWithSender[]>("/admin/uploads"),
+
+  adminListAudit: (query: AuditQuery = {}) =>
+    request<AuditPage>(
+      `/admin/audit${toQueryString({
+        page: query.page,
+        pageSize: query.pageSize,
+        sort: query.sort,
+        fileName: query.fileName,
+        from: query.from,
+        to: query.to,
+      })}`
+    ),
   adminDownloadUploadFile: (senderSub: string, id: string, fileId: string) =>
     request<{ url: string }>(`/admin/users/${senderSub}/uploads/${id}/files/${fileId}/download`),
   adminDeleteUpload: (senderSub: string, id: string) =>

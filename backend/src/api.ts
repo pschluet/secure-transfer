@@ -11,6 +11,7 @@ import {
 } from "@aws-sdk/client-cognito-identity-provider";
 import { db } from "./db";
 import { getClaims, isAdmin } from "./auth";
+import { recordAudit } from "./audit";
 import {
   presignUpload,
   presignDownload,
@@ -20,6 +21,7 @@ import {
 } from "./s3";
 import { sendUserInvitedEmail } from "./email";
 import type {
+  AuditLog,
   FileEntry,
   ShareGroup,
   UploadGroup,
@@ -237,6 +239,7 @@ app.post("/admin/users/:sub/shares", async (c) => {
   const now = new Date();
   const createdAt = now.toISOString();
   const expiresAt = new Date(now.getTime() + body.expiresInHours * 3600_000).toISOString();
+  const admin = getClaims(c);
 
   const { entries, uploads } = newFilesAndUploads(body.files, (fileId, name) =>
     shareKey(recipientSub, id, `${fileId}-${name}`)
@@ -255,6 +258,12 @@ app.post("/admin/users/:sub/shares", async (c) => {
     createdAt,
     expiresAt,
     status: "pending",
+    // Recorded at creation time (rather than derived later) because the
+    // S3-completion handler that logs the eventual "upload" audit event has
+    // no auth context, and the S3 key only encodes the recipient — not
+    // which admin created the share.
+    createdBySub: admin.sub,
+    createdByEmail: admin.email,
     gsi1pk: "SHARES",
     gsi1sk: createdAt,
   };
@@ -305,6 +314,16 @@ app.get("/admin/users/:sub/uploads/:id/files/:fileId/download", async (c) => {
       ":now": new Date().toISOString(),
     });
   }
+  const admin = getClaims(c);
+  void recordAudit({
+    action: "download",
+    context: "upload",
+    fileName: file.name,
+    fileId: file.fileId,
+    size: file.size,
+    actorSub: admin.sub,
+    actorEmail: admin.email,
+  }).catch((err) => console.error("audit log write failed", err));
   return c.json({ url });
 });
 
@@ -317,6 +336,41 @@ app.delete("/admin/users/:sub/uploads/:id", async (c) => {
   await Promise.all(group.files.map((f) => deleteObject(f.s3Key)));
   await db.delete(group.pk, group.sk);
   return c.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// Admin: audit log
+// ---------------------------------------------------------------------------
+
+app.get("/admin/audit", async (c) => {
+  const page = Math.max(1, Number(c.req.query("page") ?? "1") || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(c.req.query("pageSize") ?? "25") || 25));
+  const sort = c.req.query("sort") === "asc" ? "asc" : "desc";
+  const fileName = (c.req.query("fileName") ?? "").trim().toLowerCase();
+  const from = c.req.query("from"); // ISO date, e.g. "2026-07-01"
+  const to = c.req.query("to");
+
+  const entries = await db.queryGsi1<AuditLog>("AUDIT");
+
+  const filtered = entries.filter((e) => {
+    if (fileName && !e.fileName.toLowerCase().includes(fileName)) return false;
+    if (from && e.timestamp < from) return false;
+    // Treat `to` as inclusive of the whole day.
+    if (to && e.timestamp > `${to}T23:59:59.999Z`) return false;
+    return true;
+  });
+
+  filtered.sort((a, b) =>
+    sort === "asc"
+      ? a.timestamp < b.timestamp ? -1 : 1
+      : a.timestamp < b.timestamp ? 1 : -1
+  );
+
+  const total = filtered.length;
+  const start = (page - 1) * pageSize;
+  const pageEntries = filtered.slice(start, start + pageSize);
+
+  return c.json({ entries: pageEntries, total, page, pageSize });
 });
 
 // ---------------------------------------------------------------------------
@@ -338,7 +392,7 @@ app.get("/me/shares", async (c) => {
 });
 
 app.get("/me/shares/:id/files/:fileId/download", async (c) => {
-  const { sub } = getClaims(c);
+  const { sub, email } = getClaims(c);
   const id = c.req.param("id");
   const fileId = c.req.param("fileId");
   const items = await db.queryByPk<ShareGroup>(`USER#${sub}`, "SHARE#");
@@ -350,6 +404,17 @@ app.get("/me/shares/:id/files/:fileId/download", async (c) => {
 
   const url = await presignDownload(file.s3Key, file.name);
   await recordShareDownload(group, fileId);
+  const profile = await db.get<UserProfile>(`USER#${sub}`, "PROFILE");
+  void recordAudit({
+    action: "download",
+    context: "share",
+    fileName: file.name,
+    fileId: file.fileId,
+    size: file.size,
+    actorSub: sub,
+    actorEmail: email,
+    actorName: profile ? `${profile.firstName} ${profile.lastName}` : undefined,
+  }).catch((err) => console.error("audit log write failed", err));
   return c.json({ url });
 });
 
