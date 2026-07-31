@@ -3,10 +3,7 @@ export function ProgressBar({ value }: { value: number }) {
   return (
     <div className="progress">
       <div className="progress-track">
-        <div
-          className={`progress-fill${pct >= 100 ? " done" : ""}`}
-          style={{ width: `${pct}%` }}
-        />
+        <div className={`progress-fill${pct >= 100 ? " done" : ""}`} style={{ width: `${pct}%` }} />
       </div>
       <span className="progress-label mono">{pct}%</span>
     </div>

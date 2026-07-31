@@ -18,9 +18,7 @@ export const db = {
   tableName: TABLE_NAME,
 
   async get<T>(pk: string, sk: string): Promise<T | undefined> {
-    const res = await client.send(
-      new GetCommand({ TableName: TABLE_NAME, Key: { pk, sk } })
-    );
+    const res = await client.send(new GetCommand({ TableName: TABLE_NAME, Key: { pk, sk } }));
     return res.Item as T | undefined;
   },
 
@@ -29,21 +27,15 @@ export const db = {
   },
 
   async delete(pk: string, sk: string): Promise<void> {
-    await client.send(
-      new DeleteCommand({ TableName: TABLE_NAME, Key: { pk, sk } })
-    );
+    await client.send(new DeleteCommand({ TableName: TABLE_NAME, Key: { pk, sk } }));
   },
 
   async queryByPk<T>(pk: string, skPrefix?: string): Promise<T[]> {
     const res = await client.send(
       new QueryCommand({
         TableName: TABLE_NAME,
-        KeyConditionExpression: skPrefix
-          ? "pk = :pk AND begins_with(sk, :skPrefix)"
-          : "pk = :pk",
-        ExpressionAttributeValues: skPrefix
-          ? { ":pk": pk, ":skPrefix": skPrefix }
-          : { ":pk": pk },
+        KeyConditionExpression: skPrefix ? "pk = :pk AND begins_with(sk, :skPrefix)" : "pk = :pk",
+        ExpressionAttributeValues: skPrefix ? { ":pk": pk, ":skPrefix": skPrefix } : { ":pk": pk },
       })
     );
     return (res.Items ?? []) as T[];

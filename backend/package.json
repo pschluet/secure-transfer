@@ -4,7 +4,9 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.799.0",
@@ -20,6 +22,9 @@
   "devDependencies": {
     "@types/aws-lambda": "^8.10.146",
     "@types/node": "^22.10.5",
-    "typescript": "^5.7.2"
+    "aws-sdk-client-mock": "^4.1.0",
+    "aws-sdk-client-mock-jest": "^4.1.0",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.10"
   }
 }

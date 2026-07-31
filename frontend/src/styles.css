@@ -30,8 +30,7 @@
 
 body {
   margin: 0;
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: var(--bg);
   background-image: radial-gradient(
     ellipse 900px 500px at 50% -10%,
@@ -44,8 +43,7 @@ body {
 }
 
 .mono {
-  font-family:
-    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
 }
 
@@ -58,8 +56,7 @@ h2 {
 h1 {
   font-size: 1.1rem;
   margin: 0;
-  font-family:
-    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
@@ -355,8 +352,7 @@ form.inline-form > input {
 }
 
 .auth-card input#code {
-  font-family:
-    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-size: 1.4rem;
   letter-spacing: 0.5em;
   text-align: center;
@@ -616,8 +612,7 @@ tbody tr:hover {
 }
 
 .card-header .meta {
-  font-family:
-    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
 .card-actions {

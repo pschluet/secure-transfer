@@ -1,12 +1,6 @@
 import * as path from "node:path";
-import {
-  Stack,
-  StackProps,
-  RemovalPolicy,
-  Duration,
-  CfnOutput,
-} from "aws-cdk-lib";
-import { Construct } from "constructs";
+import { Stack, type StackProps, RemovalPolicy, Duration, CfnOutput } from "aws-cdk-lib";
+import type { Construct } from "constructs";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as s3 from "aws-cdk-lib/aws-s3";

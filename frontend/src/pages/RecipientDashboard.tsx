@@ -202,7 +202,9 @@ export function RecipientDashboard() {
             )}
 
             <button type="submit" disabled={busy || files.length === 0}>
-              {busy ? "Uploading…" : `Send ${files.length || ""} file${files.length === 1 ? "" : "s"}`}
+              {busy
+                ? "Uploading…"
+                : `Send ${files.length || ""} file${files.length === 1 ? "" : "s"}`}
             </button>
           </form>
         </section>
