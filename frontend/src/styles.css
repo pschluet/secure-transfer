@@ -948,6 +948,7 @@ tbody tr:hover {
   .audit-filters input,
   .audit-filters select {
     width: 100%;
+    min-width: 0;
     max-width: 100%;
   }
 }
