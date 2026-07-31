@@ -58,11 +58,17 @@ export function AdminDashboard() {
       setError(errorMessage(err));
     }
   }
-  async function loadUploads() {
+  async function loadUploads(options?: { silent?: boolean }) {
     try {
       setUploads(await api.adminListUploads());
     } catch (err) {
-      setError(errorMessage(err));
+      // A refresh failure here shouldn't surface as an error when it's a
+      // best-effort refresh after a download that already succeeded —
+      // mobile Safari can abort this background fetch with a "Load failed"
+      // TypeError when it hands off to the OS download manager. Callers
+      // that want visible failures (initial load, delete actions, the
+      // manual Refresh button) omit `silent`.
+      if (!options?.silent) setError(errorMessage(err));
     }
   }
   async function loadAudit() {
@@ -153,10 +159,11 @@ export function AdminDashboard() {
   }
 
   async function handleDownload(u: UploadGroupWithSender, fileId: string) {
+    setError(null);
     try {
       const { url } = await api.adminDownloadUploadFile(u.senderSub, u.id, fileId);
       triggerBrowserDownload(url);
-      void loadUploads();
+      void loadUploads({ silent: true });
     } catch (err) {
       setError(errorMessage(err));
     }
@@ -174,7 +181,7 @@ export function AdminDashboard() {
         }))
       );
       await downloadAllAsZip(withUrls, zipFilename("secure-transfer", u.createdAt));
-      void loadUploads();
+      void loadUploads({ silent: true });
     } catch (err) {
       setError(errorMessage(err));
     } finally {
