@@ -9,6 +9,7 @@ interface AuthState {
   status: AuthStatus;
   isAdmin: boolean;
   email: string | null;
+  sub: string | null;
 }
 
 interface AuthContextValue extends AuthState {
@@ -23,6 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     status: "loading",
     isAdmin: false,
     email: null,
+    sub: null,
   });
 
   async function refresh(): Promise<void> {
@@ -36,9 +38,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         status: "signedIn",
         isAdmin: groups.includes("Admins"),
         email: (idToken.payload.email as string | undefined) ?? null,
+        sub: (idToken.payload.sub as string | undefined) ?? null,
       });
     } catch {
-      setState({ status: "signedOut", isAdmin: false, email: null });
+      setState({ status: "signedOut", isAdmin: false, email: null, sub: null });
     }
   }
 

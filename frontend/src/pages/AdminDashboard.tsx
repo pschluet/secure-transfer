@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 import { triggerBrowserDownload } from "../lib/upload";
 import { downloadAllAsZip } from "../lib/zip";
 import { pollAfterDelays } from "../lib/poll";
@@ -26,7 +27,12 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong";
 }
 
+function actorLabel(firstName: string, lastName: string, email: string): string {
+  return `${firstName} ${lastName}`.trim() || email;
+}
+
 export function AdminDashboard() {
+  const { email: adminEmail, sub: adminSub } = useAuth();
   const [tab, setTab] = useState<Tab>("users");
   const [users, setUsers] = useState<AdminUserRow[] | null>(null);
   const [shares, setShares] = useState<ShareGroupWithRecipient[] | null>(null);
@@ -44,6 +50,17 @@ export function AdminDashboard() {
   const [auditActorSub, setAuditActorSub] = useState("");
   const [auditSort, setAuditSort] = useState<"asc" | "desc">("desc");
   const [auditPage, setAuditPage] = useState(1);
+
+  const auditUserOptions = useMemo(() => {
+    const options = (users ?? []).map((u) => ({
+      sub: u.sub,
+      label: actorLabel(u.firstName, u.lastName, u.email),
+    }));
+    if (adminSub && !options.some((o) => o.sub === adminSub)) {
+      options.push({ sub: adminSub, label: adminEmail ?? "Admin" });
+    }
+    return options;
+  }, [users, adminSub, adminEmail]);
 
   async function loadUsers() {
     try {
@@ -419,9 +436,9 @@ export function AdminDashboard() {
                 }}
               >
                 <option value="">All users</option>
-                {users?.map((u) => (
-                  <option key={u.sub} value={u.sub}>
-                    {u.firstName} {u.lastName} ({u.email})
+                {auditUserOptions.map((o) => (
+                  <option key={o.sub} value={o.sub}>
+                    {o.label}
                   </option>
                 ))}
               </select>
