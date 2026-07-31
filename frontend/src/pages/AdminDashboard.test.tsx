@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdminUserRow, AuditPage } from "../types";
 import { api } from "../lib/api";
+import { triggerBrowserDownload } from "../lib/upload";
 import { AdminDashboard } from "./AdminDashboard";
 
 vi.mock("../lib/api");
@@ -182,5 +183,84 @@ describe("AdminDashboard", () => {
     await user.click(screen.getByRole("button", { name: "Files received" }));
     expect(await screen.findByText("sent.txt")).toBeInTheDocument();
     expect(screen.getByText(/Jane/)).toBeInTheDocument();
+  });
+
+  const receivedUpload = {
+    id: "up1",
+    senderSub: "s1",
+    sender: { ...userRow },
+    files: [{ fileId: "f1", name: "sent.txt", size: 10, status: "ready" as const }],
+    fileCount: 1,
+    readyCount: 1,
+    totalSize: 10,
+    createdAt: "2024-01-01T00:00:00Z",
+    status: "ready" as const,
+  };
+
+  it("does not surface an error when the post-download refresh fails on mobile Safari", async () => {
+    // Reproduces the reported bug: the download itself succeeds, but the
+    // background list-refresh fired right after it is aborted by mobile
+    // Safari's download hand-off, rejecting with the literal WebKit error
+    // ("Load failed") rather than Chrome's "Failed to fetch". This must
+    // never surface as a red error banner — the download already worked.
+    vi.mocked(api.adminListUploads)
+      .mockResolvedValueOnce([receivedUpload]) // initial mount load
+      .mockRejectedValueOnce(new TypeError("Load failed")); // post-download refresh
+    vi.mocked(api.adminDownloadUploadFile).mockResolvedValue({ url: "https://x/download" });
+    const user = userEvent.setup();
+
+    render(<AdminDashboard />);
+    await user.click(screen.getByRole("button", { name: "Files received" }));
+    await screen.findByText("sent.txt");
+
+    fireEvent.click(screen.getByRole("button", { name: "Download" }));
+
+    // The primary action must still complete...
+    await waitFor(() =>
+      expect(api.adminDownloadUploadFile).toHaveBeenCalledWith("s1", "up1", "f1")
+    );
+    await waitFor(() => expect(triggerBrowserDownload).toHaveBeenCalledWith("https://x/download"));
+    // ...and the silenced background refresh must actually have run and
+    // rejected (not just been silently skipped) before we assert on it.
+    await waitFor(() => expect(api.adminListUploads).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.queryByText("Load failed")).not.toBeInTheDocument();
+    expect(document.querySelector(".error")).not.toBeInTheDocument();
+  });
+
+  it("still surfaces an error when the download itself fails", async () => {
+    // Regression guard: the fix must only silence the background refresh,
+    // never a genuine failure of the download action itself.
+    vi.mocked(api.adminListUploads).mockResolvedValue([receivedUpload]);
+    vi.mocked(api.adminDownloadUploadFile).mockRejectedValue(new Error("Not found"));
+    const user = userEvent.setup();
+
+    render(<AdminDashboard />);
+    await user.click(screen.getByRole("button", { name: "Files received" }));
+    await screen.findByText("sent.txt");
+
+    fireEvent.click(screen.getByRole("button", { name: "Download" }));
+
+    expect(await screen.findByText("Not found")).toBeInTheDocument();
+  });
+
+  it("still surfaces an error when the manual refresh button fails", async () => {
+    // Regression guard: refreshes NOT triggered by a download (e.g. the
+    // user explicitly clicking Refresh) must still show real failures.
+    vi.mocked(api.adminListUploads)
+      .mockResolvedValueOnce([receivedUpload])
+      .mockRejectedValueOnce(new TypeError("Load failed"));
+    const user = userEvent.setup();
+
+    render(<AdminDashboard />);
+    await user.click(screen.getByRole("button", { name: "Files received" }));
+    await screen.findByText("sent.txt");
+
+    await user.click(screen.getByRole("button", { name: "Refresh uploads" }));
+
+    expect(await screen.findByText("Load failed")).toBeInTheDocument();
   });
 });

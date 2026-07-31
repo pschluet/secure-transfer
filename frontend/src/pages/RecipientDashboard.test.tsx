@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShareGroup, UploadGroup } from "../types";
@@ -68,6 +68,63 @@ describe("RecipientDashboard", () => {
 
     await waitFor(() => expect(api.meDownloadShareFile).toHaveBeenCalledWith("sh1", "f1"));
     await waitFor(() => expect(triggerBrowserDownload).toHaveBeenCalledWith("https://x/download"));
+  });
+
+  it("does not surface an error when the post-download refresh fails on mobile Safari", async () => {
+    // Reproduces the reported bug: the download itself succeeds, but the
+    // background list-refresh fired right after it is aborted by mobile
+    // Safari's download hand-off, rejecting with the literal WebKit error
+    // ("Load failed") rather than Chrome's "Failed to fetch". This must
+    // never surface as a red error banner — the download already worked.
+    vi.mocked(api.meDownloadShareFile).mockResolvedValue({ url: "https://x/download" });
+    vi.mocked(api.meShares)
+      .mockResolvedValueOnce([share]) // initial mount load
+      .mockRejectedValueOnce(new TypeError("Load failed")); // post-download refresh
+
+    render(<RecipientDashboard />);
+    await screen.findByText("report.pdf");
+
+    fireEvent.click(screen.getByRole("button", { name: "Download" }));
+
+    // The primary action must still complete...
+    await waitFor(() => expect(triggerBrowserDownload).toHaveBeenCalledWith("https://x/download"));
+    // ...and the silenced background refresh must actually have run and
+    // rejected (not just been silently skipped) before we assert on it.
+    await waitFor(() => expect(api.meShares).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.queryByText("Load failed")).not.toBeInTheDocument();
+    expect(document.querySelector(".error")).not.toBeInTheDocument();
+  });
+
+  it("still surfaces an error when the download itself fails", async () => {
+    // Regression guard: the fix must only silence the background refresh,
+    // never a genuine failure of the download action itself.
+    vi.mocked(api.meDownloadShareFile).mockRejectedValue(new Error("Not found"));
+    render(<RecipientDashboard />);
+    await screen.findByText("report.pdf");
+
+    fireEvent.click(screen.getByRole("button", { name: "Download" }));
+
+    expect(await screen.findByText("Not found")).toBeInTheDocument();
+  });
+
+  it("still surfaces an error when the manual refresh button fails", async () => {
+    // Regression guard: refreshes NOT triggered by a download (e.g. the
+    // user explicitly clicking Refresh) must still show real failures.
+    vi.mocked(api.meShares)
+      .mockResolvedValueOnce([share])
+      .mockRejectedValueOnce(new TypeError("Load failed"));
+    const user = userEvent.setup();
+
+    render(<RecipientDashboard />);
+    await screen.findByText("report.pdf");
+
+    await user.click(screen.getByRole("button", { name: "Refresh shared files" }));
+
+    expect(await screen.findByText("Load failed")).toBeInTheDocument();
   });
 });
 
