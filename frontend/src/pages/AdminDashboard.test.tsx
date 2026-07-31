@@ -174,9 +174,7 @@ describe("AdminDashboard", () => {
     await user.click(screen.getByRole("button", { name: "Audit log" }));
     await screen.findByText("report.pdf");
 
-    expect(
-      screen.getByRole("option", { name: "admin@example.com" })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "admin@example.com" })).toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText("User"), "admin-1");
 
