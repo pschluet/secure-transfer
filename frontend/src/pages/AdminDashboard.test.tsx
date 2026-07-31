@@ -4,12 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdminUserRow, AuditPage } from "../types";
 import { api } from "../lib/api";
 import { triggerBrowserDownload } from "../lib/upload";
+import { useAuth } from "../context/AuthContext";
 import { AdminDashboard } from "./AdminDashboard";
 
 vi.mock("../lib/api");
 vi.mock("../lib/upload");
 vi.mock("../lib/zip");
 vi.mock("../lib/poll");
+vi.mock("../context/AuthContext");
 
 const userRow: AdminUserRow = {
   sub: "u1",
@@ -49,6 +51,14 @@ function setDefaults() {
   vi.mocked(api.adminListShares).mockResolvedValue([]);
   vi.mocked(api.adminListUploads).mockResolvedValue([]);
   vi.mocked(api.adminListAudit).mockResolvedValue(emptyAudit);
+  vi.mocked(useAuth).mockReturnValue({
+    status: "signedIn",
+    isAdmin: true,
+    email: "admin@example.com",
+    sub: "admin-1",
+    refresh: vi.fn(),
+    signOut: vi.fn(),
+  });
 }
 
 describe("AdminDashboard", () => {
@@ -153,6 +163,41 @@ describe("AdminDashboard", () => {
     await waitFor(() =>
       expect(vi.mocked(api.adminListAudit).mock.lastCall?.[0]).toMatchObject({ actorSub: "u1" })
     );
+  });
+
+  it("includes the signed-in admin in the user filter, labeled by email", async () => {
+    vi.mocked(api.adminListUsers).mockResolvedValue([userRow]);
+    vi.mocked(api.adminListAudit).mockResolvedValue(auditWith(1));
+    const user = userEvent.setup();
+
+    render(<AdminDashboard />);
+    await user.click(screen.getByRole("button", { name: "Audit log" }));
+    await screen.findByText("report.pdf");
+
+    expect(
+      screen.getByRole("option", { name: "admin@example.com" })
+    ).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("User"), "admin-1");
+
+    await waitFor(() =>
+      expect(vi.mocked(api.adminListAudit).mock.lastCall?.[0]).toMatchObject({
+        actorSub: "admin-1",
+      })
+    );
+  });
+
+  it("falls back to email in the user filter when a user has no name on file", async () => {
+    vi.mocked(api.adminListUsers).mockResolvedValue([
+      { ...userRow, sub: "u2", firstName: "", lastName: "", email: "blank@example.com" },
+    ]);
+    const user = userEvent.setup();
+
+    render(<AdminDashboard />);
+    await user.click(screen.getByRole("button", { name: "Audit log" }));
+    await screen.findByText("No activity yet.");
+
+    expect(screen.getByRole("option", { name: "blank@example.com" })).toBeInTheDocument();
   });
 
   it("disables both pagination buttons when there is a single page", async () => {

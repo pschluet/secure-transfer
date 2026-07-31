@@ -9,24 +9,25 @@ vi.mock("aws-amplify/utils", () => ({
   Hub: { listen: vi.fn(() => vi.fn()) },
 }));
 
-function session(groups: string[], email = "user@example.com") {
+function session(groups: string[], email = "user@example.com", sub = "sub-123") {
   return {
     tokens: {
       idToken: {
         toString: () => "id-token",
-        payload: { "cognito:groups": groups, email },
+        payload: { "cognito:groups": groups, email, sub },
       },
     },
   };
 }
 
 function Probe() {
-  const { status, isAdmin, email, signOut } = useAuth();
+  const { status, isAdmin, email, sub, signOut } = useAuth();
   return (
     <div>
       <span data-testid="status">{status}</span>
       <span data-testid="isAdmin">{String(isAdmin)}</span>
       <span data-testid="email">{email ?? "none"}</span>
+      <span data-testid="sub">{sub ?? "none"}</span>
       <button onClick={() => void signOut()}>sign out</button>
     </div>
   );
@@ -73,6 +74,7 @@ describe("AuthContext", () => {
     await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("signedIn"));
     expect(screen.getByTestId("isAdmin")).toHaveTextContent("true");
     expect(screen.getByTestId("email")).toHaveTextContent("user@example.com");
+    expect(screen.getByTestId("sub")).toHaveTextContent("sub-123");
   });
 
   it("marks isAdmin false when the user is not in the Admins group", async () => {

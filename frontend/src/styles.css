@@ -519,8 +519,10 @@ tbody tr:hover {
   flex-direction: column;
 }
 
-.audit-filters input {
+.audit-filters input,
+.audit-filters select {
   min-width: 160px;
+  max-width: 220px;
 }
 
 .pagination {
@@ -932,5 +934,20 @@ tbody tr:hover {
   .file-item,
   .selected-files li {
     align-items: start;
+  }
+
+  /* Stack the audit filters and let each one fill the width instead of
+     auto-sizing to its content (a <select> sizes to its longest option,
+     which can overflow the viewport on narrow screens). */
+  .audit-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .audit-filters > div,
+  .audit-filters input,
+  .audit-filters select {
+    width: 100%;
+    max-width: 100%;
   }
 }
