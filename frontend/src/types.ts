@@ -92,4 +92,5 @@ export interface AuditQuery {
   fileName?: string;
   from?: string;
   to?: string;
+  actorSub?: string;
 }

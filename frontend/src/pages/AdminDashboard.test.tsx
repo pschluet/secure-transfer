@@ -139,6 +139,22 @@ describe("AdminDashboard", () => {
     vi.useRealTimers();
   });
 
+  it("filters the audit log by the selected user", async () => {
+    vi.mocked(api.adminListUsers).mockResolvedValue([userRow]);
+    vi.mocked(api.adminListAudit).mockResolvedValue(auditWith(1));
+    const user = userEvent.setup();
+
+    render(<AdminDashboard />);
+    await user.click(screen.getByRole("button", { name: "Audit log" }));
+    await screen.findByText("report.pdf");
+
+    await user.selectOptions(screen.getByLabelText("User"), "u1");
+
+    await waitFor(() =>
+      expect(vi.mocked(api.adminListAudit).mock.lastCall?.[0]).toMatchObject({ actorSub: "u1" })
+    );
+  });
+
   it("disables both pagination buttons when there is a single page", async () => {
     vi.mocked(api.adminListAudit).mockResolvedValue(auditWith(10));
     const user = userEvent.setup();

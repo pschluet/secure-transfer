@@ -78,6 +78,7 @@ export const api = {
         fileName: query.fileName,
         from: query.from,
         to: query.to,
+        actorSub: query.actorSub,
       })}`
     ),
   adminDownloadUploadFile: (senderSub: string, id: string, fileId: string) =>
