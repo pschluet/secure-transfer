@@ -9,9 +9,18 @@
   "scripts": {
     "synth": "npm run synth -w infra",
     "deploy": "npm run deploy -w infra",
-    "build:frontend": "npm run build -w frontend"
+    "build:frontend": "npm run build -w frontend",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "biome lint .",
+    "format": "biome format .",
+    "format:write": "biome format --write .",
+    "ci:check": "biome ci ."
   },
   "engines": {
     "node": ">=22"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.6"
   }
 }

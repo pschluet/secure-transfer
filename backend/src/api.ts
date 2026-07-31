@@ -12,13 +12,7 @@ import {
 import { db } from "./db";
 import { getClaims, isAdmin } from "./auth";
 import { recordAudit } from "./audit";
-import {
-  presignUpload,
-  presignDownload,
-  deleteObject,
-  shareKey,
-  uploadKey,
-} from "./s3";
+import { presignUpload, presignDownload, deleteObject, shareKey, uploadKey } from "./s3";
 import { sendUserInvitedEmail } from "./email";
 import type {
   AuditLog,
@@ -137,9 +131,7 @@ app.get("/admin/users", async (c) => {
   const hasDownloadBySub = new Set(
     shares.filter((s) => !!s.firstDownloadAt).map((s) => s.recipientSub)
   );
-  const hasSentBySub = new Set(
-    uploads.filter((u) => u.status === "ready").map((u) => u.senderSub)
-  );
+  const hasSentBySub = new Set(uploads.filter((u) => u.status === "ready").map((u) => u.senderSub));
 
   const result = profiles
     .map((p) => ({
@@ -226,7 +218,10 @@ app.get("/admin/shares", async (c) => {
 
 const createShareSchema = z.object({
   files: z.array(z.object({ name: z.string().min(1), size: z.number().nonnegative() })).min(1),
-  expiresInHours: z.number().positive().max(24 * 365),
+  expiresInHours: z
+    .number()
+    .positive()
+    .max(24 * 365),
 });
 
 app.post("/admin/users/:sub/shares", async (c) => {
@@ -361,9 +356,7 @@ app.get("/admin/audit", async (c) => {
   });
 
   filtered.sort((a, b) =>
-    sort === "asc"
-      ? a.timestamp < b.timestamp ? -1 : 1
-      : a.timestamp < b.timestamp ? 1 : -1
+    sort === "asc" ? (a.timestamp < b.timestamp ? -1 : 1) : a.timestamp < b.timestamp ? 1 : -1
   );
 
   const total = filtered.length;
@@ -466,5 +459,10 @@ app.onError((err, c) => {
   console.error(err);
   return c.json({ error: "Internal error" }, 500);
 });
+
+// Exported for integration tests, which call `app.request(...)` directly and
+// inject JWT claims via the Lambda-shaped `env` argument that `getClaims`
+// reads from (see `auth.ts`). Not used by the Lambda runtime itself.
+export { app };
 
 export const handler = handle(app);

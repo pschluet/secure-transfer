@@ -33,12 +33,8 @@ function parseGroups(raw: unknown): string[] {
 }
 
 export function getClaims(c: Context): Claims {
-  const event = (c.env as { event: APIGatewayProxyEventV2WithJWTAuthorizer })
-    .event;
-  const claims = event.requestContext.authorizer.jwt.claims as Record<
-    string,
-    unknown
-  >;
+  const event = (c.env as { event: APIGatewayProxyEventV2WithJWTAuthorizer }).event;
+  const claims = event.requestContext.authorizer.jwt.claims as Record<string, unknown>;
   return {
     sub: String(claims.sub),
     email: String(claims.email ?? ""),

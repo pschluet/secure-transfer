@@ -20,9 +20,7 @@ const CENTRAL_TZ_NAME = new Intl.DateTimeFormat("en-US", {
 // so the zone abbreviation (CDT/CST) is pulled from a second formatter.
 function formatCentral(iso: string): string {
   const date = new Date(iso);
-  const zone = CENTRAL_TZ_NAME.formatToParts(date).find(
-    (p) => p.type === "timeZoneName"
-  )?.value;
+  const zone = CENTRAL_TZ_NAME.formatToParts(date).find((p) => p.type === "timeZoneName")?.value;
   return `${CENTRAL_DATE_TIME.format(date)} ${zone}`;
 }
 

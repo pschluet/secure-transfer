@@ -277,8 +277,8 @@ export function AdminDashboard() {
                 <li key={s.id} className="card">
                   <div className="card-header">
                     <span>
-                      {s.recipient ? `${s.recipient.firstName} ${s.recipient.lastName}` : "Unknown"} —{" "}
-                      {formatDate(s.createdAt)}
+                      {s.recipient ? `${s.recipient.firstName} ${s.recipient.lastName}` : "Unknown"}{" "}
+                      — {formatDate(s.createdAt)}
                     </span>
                     <span className="mono">
                       {s.status === "ready" ? formatTimeLeft(s.expiresAt) : "Uploading…"}
