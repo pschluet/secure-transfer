@@ -65,6 +65,29 @@ describe("GET /admin/audit filtering", () => {
     const page = await getAudit("?from=2026-07-01&sort=asc");
     expect(page.entries.map((e) => e.id)).toEqual(["on", "after"]);
   });
+
+  it("applies an exact actorSub filter", async () => {
+    seed(
+      auditRow({
+        id: "1",
+        timestamp: "2026-07-01T00:00:00.000Z",
+        actorSub: "user-a",
+        actorEmail: "a@example.com",
+      })
+    );
+    seed(
+      auditRow({
+        id: "2",
+        timestamp: "2026-07-02T00:00:00.000Z",
+        actorSub: "user-b",
+        actorEmail: "b@example.com",
+      })
+    );
+
+    const page = await getAudit("?actorSub=user-b");
+    expect(page.total).toBe(1);
+    expect(page.entries.map((e) => e.id)).toEqual(["2"]);
+  });
 });
 
 describe("GET /admin/audit sorting", () => {

@@ -344,11 +344,13 @@ app.get("/admin/audit", async (c) => {
   const fileName = (c.req.query("fileName") ?? "").trim().toLowerCase();
   const from = c.req.query("from"); // ISO date, e.g. "2026-07-01"
   const to = c.req.query("to");
+  const actorSub = c.req.query("actorSub");
 
   const entries = await db.queryGsi1<AuditLog>("AUDIT");
 
   const filtered = entries.filter((e) => {
     if (fileName && !e.fileName.toLowerCase().includes(fileName)) return false;
+    if (actorSub && e.actorSub !== actorSub) return false;
     if (from && e.timestamp < from) return false;
     // Treat `to` as inclusive of the whole day.
     if (to && e.timestamp > `${to}T23:59:59.999Z`) return false;

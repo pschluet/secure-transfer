@@ -41,6 +41,7 @@ export function AdminDashboard() {
   const [auditFileName, setAuditFileName] = useState("");
   const [auditFrom, setAuditFrom] = useState("");
   const [auditTo, setAuditTo] = useState("");
+  const [auditActorSub, setAuditActorSub] = useState("");
   const [auditSort, setAuditSort] = useState<"asc" | "desc">("desc");
   const [auditPage, setAuditPage] = useState(1);
 
@@ -81,6 +82,7 @@ export function AdminDashboard() {
           fileName: auditFileName,
           from: auditFrom,
           to: auditTo,
+          actorSub: auditActorSub,
         })
       );
     } catch (err) {
@@ -106,7 +108,7 @@ export function AdminDashboard() {
 
   useEffect(() => {
     void loadAudit();
-  }, [auditFileName, auditFrom, auditTo, auditSort, auditPage]);
+  }, [auditFileName, auditFrom, auditTo, auditActorSub, auditSort, auditPage]);
 
   function handleAuditSortToggle() {
     setAuditSort((s) => (s === "desc" ? "asc" : "desc"));
@@ -118,6 +120,7 @@ export function AdminDashboard() {
     setAuditFileName("");
     setAuditFrom("");
     setAuditTo("");
+    setAuditActorSub("");
     setAuditPage(1);
   }
 
@@ -404,6 +407,24 @@ export function AdminDashboard() {
                 value={auditFileNameInput}
                 onChange={(e) => setAuditFileNameInput(e.target.value)}
               />
+            </div>
+            <div>
+              <label htmlFor="audit-user">User</label>
+              <select
+                id="audit-user"
+                value={auditActorSub}
+                onChange={(e) => {
+                  setAuditActorSub(e.target.value);
+                  setAuditPage(1);
+                }}
+              >
+                <option value="">All users</option>
+                {users?.map((u) => (
+                  <option key={u.sub} value={u.sub}>
+                    {u.firstName} {u.lastName} ({u.email})
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label htmlFor="audit-from">From</label>
