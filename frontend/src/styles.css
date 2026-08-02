@@ -951,4 +951,16 @@ tbody tr:hover {
     min-width: 0;
     max-width: 100%;
   }
+
+  /* iOS Safari computes width: 100% (and min-width: 100%) on type="date"
+     against its native intrinsic layout rather than the container, so
+     neither percentage keeps it from overflowing the viewport. Only
+     -webkit-appearance: none drops that native sizing, at the cost of
+     the calendar icon and the control's default height. */
+  .audit-filters input[type="date"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    min-height: 2.25rem;
+  }
 }
