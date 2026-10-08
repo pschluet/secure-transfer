@@ -11,9 +11,10 @@ import {
 } from "@aws-sdk/client-cognito-identity-provider";
 import { db } from "./db";
 import { getClaims, isAdmin } from "./auth";
-import { recordAudit } from "./audit";
+import { recordAudit, type AuditEvent } from "./audit";
 import { presignUpload, presignDownload, deleteObject, shareKey, uploadKey } from "./s3";
 import { sendUserInvitedEmail } from "./email";
+import { notifyShareReady, notifyUploadReady } from "./notify";
 import type {
   AuditLog,
   FileEntry,
@@ -59,6 +60,19 @@ function newFilesAndUploads(
   return { entries, uploads };
 }
 
+/** Shared by share and upload creation: a message, files, or both — but not
+ * neither. */
+const shareContentsSchema = z
+  .object({
+    files: z
+      .array(z.object({ name: z.string().min(1), size: z.number().nonnegative() }))
+      .default([]),
+    message: z.string().trim().max(10_000).optional(),
+  })
+  .refine((b) => b.files.length > 0 || !!b.message, {
+    message: "A share needs a message, files, or both",
+  });
+
 async function recordShareDownload(group: ShareGroup, fileId: string): Promise<void> {
   const idx = group.files.findIndex((f) => f.fileId === fileId);
   const now = new Date().toISOString();
@@ -71,6 +85,22 @@ async function recordShareDownload(group: ShareGroup, fileId: string): Promise<v
     expr += `, #files[${idx}].downloadedAt = :now`;
   }
   await db.update(group.pk, group.sk, expr, values, Object.keys(names).length ? names : undefined);
+}
+
+/** Stamps `messageViewedAt` on the first view only (so it records when the
+ * message was first read), and audits every view. */
+async function recordMessageView(
+  group: ShareGroup | UploadGroup,
+  actor: Pick<AuditEvent, "context" | "actorSub" | "actorEmail" | "actorName">
+): Promise<void> {
+  if (!group.messageViewedAt) {
+    await db.update(group.pk, group.sk, "SET messageViewedAt = :now", {
+      ":now": new Date().toISOString(),
+    });
+  }
+  void recordAudit({ action: "view", fileName: "Message", fileId: group.id, ...actor }).catch(
+    (err) => console.error("audit log write failed", err)
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -128,15 +158,15 @@ app.get("/admin/users", async (c) => {
     db.queryGsi1<UploadGroup>("UPLOADS"),
   ]);
 
-  const hasDownloadBySub = new Set(
-    shares.filter((s) => !!s.firstDownloadAt).map((s) => s.recipientSub)
+  const hasOpenedBySub = new Set(
+    shares.filter((s) => !!s.firstDownloadAt || !!s.messageViewedAt).map((s) => s.recipientSub)
   );
   const hasSentBySub = new Set(uploads.filter((u) => u.status === "ready").map((u) => u.senderSub));
 
   const result = profiles
     .map((p) => ({
       ...p,
-      hasDownloaded: hasDownloadBySub.has(p.sub),
+      hasOpened: hasOpenedBySub.has(p.sub),
       hasSent: hasSentBySub.has(p.sub),
     }))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
@@ -216,13 +246,14 @@ app.get("/admin/shares", async (c) => {
   return c.json(enriched);
 });
 
-const createShareSchema = z.object({
-  files: z.array(z.object({ name: z.string().min(1), size: z.number().nonnegative() })).min(1),
-  expiresInHours: z
-    .number()
-    .positive()
-    .max(24 * 365),
-});
+const createShareSchema = shareContentsSchema.and(
+  z.object({
+    expiresInHours: z
+      .number()
+      .positive()
+      .max(24 * 365),
+  })
+);
 
 app.post("/admin/users/:sub/shares", async (c) => {
   const recipientSub = c.req.param("sub");
@@ -252,7 +283,10 @@ app.post("/admin/users/:sub/shares", async (c) => {
     totalSize: body.files.reduce((sum, f) => sum + f.size, 0),
     createdAt,
     expiresAt,
-    status: "pending",
+    // A message-only share has no files for the S3 event handler to wait on,
+    // so it's ready (and notified) immediately.
+    status: entries.length === 0 ? "ready" : "pending",
+    message: body.message || undefined,
     // Recorded at creation time (rather than derived later) because the
     // S3-completion handler that logs the eventual "upload" audit event has
     // no auth context, and the S3 key only encodes the recipient — not
@@ -263,6 +297,7 @@ app.post("/admin/users/:sub/shares", async (c) => {
     gsi1sk: createdAt,
   };
   await db.put(group);
+  if (group.status === "ready") await notifyShareReady(group);
   return c.json({ group, uploads: resolvedUploads }, 201);
 });
 
@@ -320,6 +355,22 @@ app.get("/admin/users/:sub/uploads/:id/files/:fileId/download", async (c) => {
     actorEmail: admin.email,
   }).catch((err) => console.error("audit log write failed", err));
   return c.json({ url });
+});
+
+app.post("/admin/users/:sub/uploads/:id/message/view", async (c) => {
+  const sub = c.req.param("sub");
+  const id = c.req.param("id");
+  const items = await db.queryByPk<UploadGroup>(`USER#${sub}`, "UPLOAD#");
+  const group = items.find((i) => i.id === id);
+  if (!group?.message) return c.json({ error: "Not found" }, 404);
+
+  const admin = getClaims(c);
+  await recordMessageView(group, {
+    context: "upload",
+    actorSub: admin.sub,
+    actorEmail: admin.email,
+  });
+  return c.json({ ok: true });
 });
 
 app.delete("/admin/users/:sub/uploads/:id", async (c) => {
@@ -413,19 +464,33 @@ app.get("/me/shares/:id/files/:fileId/download", async (c) => {
   return c.json({ url });
 });
 
+app.post("/me/shares/:id/message/view", async (c) => {
+  const { sub, email } = getClaims(c);
+  const id = c.req.param("id");
+  const items = await db.queryByPk<ShareGroup>(`USER#${sub}`, "SHARE#");
+  const group = items.find((i) => i.id === id);
+  if (!group?.message) return c.json({ error: "Not found" }, 404);
+  if (group.expiresAt <= new Date().toISOString()) return c.json({ error: "Expired" }, 410);
+
+  const profile = await db.get<UserProfile>(`USER#${sub}`, "PROFILE");
+  await recordMessageView(group, {
+    context: "share",
+    actorSub: sub,
+    actorEmail: email,
+    actorName: profile ? `${profile.firstName} ${profile.lastName}` : undefined,
+  });
+  return c.json({ ok: true });
+});
+
 app.get("/me/uploads", async (c) => {
   const { sub } = getClaims(c);
   const items = await db.queryByPk<UploadGroup>(`USER#${sub}`, "UPLOAD#");
   return c.json(items.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)));
 });
 
-const createUploadSchema = z.object({
-  files: z.array(z.object({ name: z.string().min(1), size: z.number().nonnegative() })).min(1),
-});
-
 app.post("/me/uploads", async (c) => {
   const { sub } = getClaims(c);
-  const body = createUploadSchema.parse(await c.req.json());
+  const body = shareContentsSchema.parse(await c.req.json());
   const id = ulid();
   const createdAt = new Date().toISOString();
 
@@ -444,11 +509,14 @@ app.post("/me/uploads", async (c) => {
     readyCount: 0,
     totalSize: body.files.reduce((sum, f) => sum + f.size, 0),
     createdAt,
-    status: "pending",
+    // See the matching comment in POST /admin/users/:sub/shares.
+    status: entries.length === 0 ? "ready" : "pending",
+    message: body.message || undefined,
     gsi1pk: "UPLOADS",
     gsi1sk: createdAt,
   };
   await db.put(group);
+  if (group.status === "ready") await notifyUploadReady(group);
   return c.json({ group, uploads: resolvedUploads }, 201);
 });
 

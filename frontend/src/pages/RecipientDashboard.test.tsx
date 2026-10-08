@@ -46,8 +46,37 @@ describe("RecipientDashboard", () => {
 
     expect(await screen.findByText("Nothing shared with you yet.")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Your upload history" }));
+    await user.click(screen.getByRole("button", { name: "Sent history" }));
     expect(await screen.findByText("You haven’t sent anything yet.")).toBeInTheDocument();
+  });
+
+  it("hides a message until opened, then records the view", async () => {
+    vi.mocked(api.meShares).mockResolvedValue([{ ...share, message: "Hello Rae" }]);
+    vi.mocked(api.meViewShareMessage).mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    render(<RecipientDashboard />);
+    await screen.findByText("report.pdf");
+    expect(screen.queryByText("Hello Rae")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "View message" }));
+
+    expect(screen.getByText("Hello Rae")).toBeInTheDocument();
+    expect(api.meViewShareMessage).toHaveBeenCalledWith("sh1");
+  });
+
+  it("sends a message without files", async () => {
+    vi.mocked(api.meCreateUpload).mockResolvedValue({ group: {}, uploads: [] } as never);
+    const user = userEvent.setup();
+    const { container } = render(<RecipientDashboard />);
+    await screen.findByText("report.pdf");
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await user.type(screen.getByLabelText("Message (optional)"), "Hi Paul");
+    await user.click(container.querySelector('button[type="submit"]') as HTMLButtonElement);
+
+    await waitFor(() =>
+      expect(api.meCreateUpload).toHaveBeenCalledWith({ files: [], message: "Hi Paul" })
+    );
   });
 
   it("switches to the send tab and disables submit with no files selected", async () => {
@@ -55,7 +84,7 @@ describe("RecipientDashboard", () => {
     const { container } = render(<RecipientDashboard />);
     await screen.findByText("report.pdf");
 
-    await user.click(screen.getByRole("button", { name: "Send files" }));
+    await user.click(screen.getByRole("button", { name: "Send" }));
     expect(container.querySelector('button[type="submit"]')).toBeDisabled();
   });
 
@@ -122,7 +151,7 @@ describe("RecipientDashboard", () => {
     render(<RecipientDashboard />);
     await screen.findByText("report.pdf");
 
-    await user.click(screen.getByRole("button", { name: "Refresh shared files" }));
+    await user.click(screen.getByRole("button", { name: "Refresh shared with you" }));
 
     expect(await screen.findByText("Load failed")).toBeInTheDocument();
   });
@@ -151,7 +180,7 @@ describe("RecipientDashboard upload history", () => {
     render(<RecipientDashboard />);
     await screen.findByText("Nothing shared with you yet.");
 
-    await user.click(screen.getByRole("button", { name: "Your upload history" }));
+    await user.click(screen.getByRole("button", { name: "Sent history" }));
     expect(await screen.findByText("sent.txt")).toBeInTheDocument();
   });
 });

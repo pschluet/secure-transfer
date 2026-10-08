@@ -43,17 +43,31 @@ async function send(to: string, subject: string, bodyText: string): Promise<void
   );
 }
 
+/** "a message", "2 files", or "a message and 1 file" — whatever a share holds. */
+function describeContents(hasMessage: boolean, fileCount: number): string {
+  const files = fileCount > 0 ? `${fileCount} ${fileCount === 1 ? "file" : "files"}` : "";
+  if (hasMessage && files) return `a message and ${files}`;
+  return hasMessage ? "a message" : files;
+}
+
+/** The summary sentence's ending: what was shared, `suffix`, then a colon and
+ * the file list, or a period when there are no files to list. */
+function contentsWithList(hasMessage: boolean, fileNames: string[], suffix = ""): string {
+  const contents = `${describeContents(hasMessage, fileNames.length)}${suffix}`;
+  return fileNames.length > 0 ? `${contents}:\n\n${formatFileList(fileNames)}` : `${contents}.`;
+}
+
 export async function sendShareReadyEmail(
   to: string,
   firstName: string,
   fileNames: string[],
-  expiresAt: string
+  expiresAt: string,
+  hasMessage = false
 ): Promise<void> {
-  const fileWord = fileNames.length === 1 ? "file" : "files";
   await send(
     to,
-    "Files shared with you on Secure Transfer",
-    `Hi ${firstName},\n\nPaul shared ${fileNames.length} ${fileWord} with you:\n\n${formatFileList(fileNames)}\n\nThey're available until ${formatCentral(expiresAt)}.\n\nLog in to download: ${SITE_URL}\n`
+    "Paul shared something with you on Secure Transfer",
+    `Hi ${firstName},\n\nPaul shared ${contentsWithList(hasMessage, fileNames, " with you")}\n\nIt's available until ${formatCentral(expiresAt)}.\n\nLog in to view: ${SITE_URL}\n`
   );
 }
 
@@ -61,19 +75,19 @@ export async function sendUserInvitedEmail(to: string, firstName: string): Promi
   await send(
     to,
     "You've been added to Secure Transfer",
-    `Hi ${firstName},\n\nPaul added you to Secure Transfer, a site for exchanging files securely.\n\nGo to ${SITE_URL} and enter this email address to sign in — you'll get a one-time code by email, no password needed.\n`
+    `Hi ${firstName},\n\nPaul added you to Secure Transfer, a site for exchanging files and messages securely.\n\nGo to ${SITE_URL} and enter this email address to sign in — you'll get a one-time code by email, no password needed.\n`
   );
 }
 
 export async function sendUploadReadyEmail(
   to: string,
   senderName: string,
-  fileNames: string[]
+  fileNames: string[],
+  hasMessage = false
 ): Promise<void> {
-  const fileWord = fileNames.length === 1 ? "file" : "files";
   await send(
     to,
-    "New files uploaded on Secure Transfer",
-    `${senderName} uploaded ${fileNames.length} ${fileWord} for you:\n\n${formatFileList(fileNames)}\n\nLog in to download: ${SITE_URL}\n`
+    `New share from ${senderName} on Secure Transfer`,
+    `${senderName} sent you ${contentsWithList(hasMessage, fileNames)}\n\nLog in to view: ${SITE_URL}\n`
   );
 }

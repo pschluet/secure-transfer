@@ -7,13 +7,16 @@ import { pollAfterDelays } from "../lib/poll";
 import { formatBytes, formatDate, formatTimeLeft, zipFilename } from "../lib/format";
 import { CreateUserForm } from "../components/CreateUserForm";
 import { EditUserForm } from "../components/EditUserForm";
-import { ShareFilesForm } from "../components/ShareFilesForm";
+import { ShareForm } from "../components/ShareForm";
+import { MessageBox } from "../components/MessageBox";
+import { SentMessage } from "../components/SentMessage";
 import { Modal } from "../components/Modal";
 import { FileItem } from "../components/FileItem";
 import { StatusPill } from "../components/StatusPill";
 import { RefreshButton } from "../components/RefreshButton";
 import type {
   AdminUserRow,
+  AuditLog,
   AuditPage,
   ShareGroupWithRecipient,
   UploadGroupWithSender,
@@ -22,6 +25,11 @@ import type {
 
 type Tab = "users" | "shares" | "uploads" | "audit";
 const AUDIT_PAGE_SIZE = 25;
+const AUDIT_ACTION_LABELS: Record<AuditLog["action"], string> = {
+  upload: "Sent",
+  download: "Downloaded",
+  view: "Viewed",
+};
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong";
@@ -144,7 +152,7 @@ export function AdminDashboard() {
   async function handleDeleteUser(u: AdminUserRow) {
     if (
       !confirm(
-        `Delete ${u.firstName} ${u.lastName}? This removes their account and all files shared with or sent by them, permanently.`
+        `Delete ${u.firstName} ${u.lastName}? This removes their account and everything shared with or sent by them, permanently.`
       )
     )
       return;
@@ -159,7 +167,7 @@ export function AdminDashboard() {
   }
 
   async function handleDeleteShare(s: ShareGroupWithRecipient) {
-    if (!confirm("Delete this share? This removes the files permanently.")) return;
+    if (!confirm("Delete this share? This removes it permanently.")) return;
     try {
       await api.adminDeleteShare(s.recipientSub, s.id);
       void loadShares();
@@ -169,10 +177,20 @@ export function AdminDashboard() {
   }
 
   async function handleDeleteUpload(u: UploadGroupWithSender) {
-    if (!confirm("Delete these files permanently?")) return;
+    if (!confirm("Delete this share permanently?")) return;
     try {
       await api.adminDeleteUpload(u.senderSub, u.id);
       void loadUploads();
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  async function handleViewMessage(u: UploadGroupWithSender) {
+    setError(null);
+    try {
+      await api.adminViewUploadMessage(u.senderSub, u.id);
+      void loadUploads({ silent: true });
     } catch (err) {
       setError(errorMessage(err));
     }
@@ -216,10 +234,10 @@ export function AdminDashboard() {
           Users
         </button>
         <button className={tab === "shares" ? "active" : ""} onClick={() => setTab("shares")}>
-          Shares sent
+          Sent
         </button>
         <button className={tab === "uploads" ? "active" : ""} onClick={() => setTab("uploads")}>
-          Files received
+          Received
         </button>
         <button className={tab === "audit" ? "active" : ""} onClick={() => setTab("audit")}>
           Audit log
@@ -245,8 +263,8 @@ export function AdminDashboard() {
                 <tr>
                   <th>Name</th>
                   <th>Email</th>
-                  <th>Downloaded?</th>
-                  <th>Sent files?</th>
+                  <th>Opened?</th>
+                  <th>Sent anything?</th>
                   <th></th>
                 </tr>
               </thead>
@@ -257,12 +275,12 @@ export function AdminDashboard() {
                       {u.firstName} {u.lastName}
                     </td>
                     <td data-label="Email">{u.email}</td>
-                    <td data-label="Downloaded?">
-                      <StatusPill tone={u.hasDownloaded ? "success" : "neutral"}>
-                        {u.hasDownloaded ? "Yes" : "No"}
+                    <td data-label="Opened?">
+                      <StatusPill tone={u.hasOpened ? "success" : "neutral"}>
+                        {u.hasOpened ? "Yes" : "No"}
                       </StatusPill>
                     </td>
-                    <td data-label="Sent files?">
+                    <td data-label="Sent anything?">
                       <StatusPill tone={u.hasSent ? "success" : "neutral"}>
                         {u.hasSent ? "Yes" : "No"}
                       </StatusPill>
@@ -270,7 +288,7 @@ export function AdminDashboard() {
                     <td>
                       <div className="button-row">
                         <button className="secondary small" onClick={() => setShareTarget(u)}>
-                          Share files
+                          Share
                         </button>
                         <button className="secondary small" onClick={() => setEditTarget(u)}>
                           Edit
@@ -291,7 +309,7 @@ export function AdminDashboard() {
       {tab === "shares" && (
         <section>
           <div className="section-header">
-            <h2>Files you&rsquo;ve shared</h2>
+            <h2>What you&rsquo;ve shared</h2>
             <RefreshButton onRefresh={loadShares} label="Refresh shares" />
           </div>
           {!shares ? (
@@ -311,6 +329,7 @@ export function AdminDashboard() {
                       {s.status === "ready" ? formatTimeLeft(s.expiresAt) : "Uploading…"}
                     </span>
                   </div>
+                  {s.message && <SentMessage message={s.message} viewedAt={s.messageViewedAt} />}
                   <ul className="file-items">
                     {s.files.map((f) => (
                       <FileItem
@@ -342,8 +361,8 @@ export function AdminDashboard() {
       {tab === "uploads" && (
         <section>
           <div className="section-header">
-            <h2>Files sent to you</h2>
-            <RefreshButton onRefresh={loadUploads} label="Refresh uploads" />
+            <h2>Sent to you</h2>
+            <RefreshButton onRefresh={loadUploads} label="Refresh received" />
           </div>
           {!uploads ? (
             <p className="hint">Loading…</p>
@@ -360,8 +379,15 @@ export function AdminDashboard() {
                         {u.sender ? `${u.sender.firstName} ${u.sender.lastName}` : "Unknown"} —{" "}
                         {formatDate(u.createdAt)}
                       </span>
-                      <span>{formatBytes(u.totalSize)}</span>
+                      <span>{u.files.length > 0 ? formatBytes(u.totalSize) : ""}</span>
                     </div>
+                    {u.message && (
+                      <MessageBox
+                        message={u.message}
+                        viewedAt={u.messageViewedAt}
+                        onView={() => void handleViewMessage(u)}
+                      />
+                    )}
                     <ul className="file-items">
                       {u.files.map((f) => (
                         <FileItem
@@ -488,7 +514,7 @@ export function AdminDashboard() {
                     </th>
                     <th>Action</th>
                     <th>Type</th>
-                    <th>File</th>
+                    <th>Item</th>
                     <th>User</th>
                   </tr>
                 </thead>
@@ -497,12 +523,12 @@ export function AdminDashboard() {
                     <tr key={e.id}>
                       <td>{formatDate(e.timestamp)}</td>
                       <td data-label="Action">
-                        <StatusPill tone={e.action === "download" ? "success" : "neutral"}>
-                          {e.action === "download" ? "Downloaded" : "Uploaded"}
+                        <StatusPill tone={e.action === "upload" ? "neutral" : "success"}>
+                          {AUDIT_ACTION_LABELS[e.action]}
                         </StatusPill>
                       </td>
                       <td data-label="Type">{e.context === "share" ? "Share" : "Upload"}</td>
-                      <td data-label="File">{e.fileName}</td>
+                      <td data-label="Item">{e.fileName}</td>
                       <td data-label="User">{e.actorName ?? e.actorEmail}</td>
                     </tr>
                   ))}
@@ -534,8 +560,8 @@ export function AdminDashboard() {
       )}
 
       {shareTarget && (
-        <Modal title="Share files" onClose={() => setShareTarget(null)}>
-          <ShareFilesForm
+        <Modal title="New share" onClose={() => setShareTarget(null)}>
+          <ShareForm
             recipient={shareTarget}
             onDone={() => {
               setShareTarget(null);

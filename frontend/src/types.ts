@@ -21,7 +21,7 @@ export interface UserProfile {
 }
 
 export interface AdminUserRow extends UserProfile {
-  hasDownloaded: boolean;
+  hasOpened: boolean;
   hasSent: boolean;
 }
 
@@ -35,6 +35,8 @@ export interface ShareGroup {
   createdAt: string;
   expiresAt: string;
   status: GroupStatus;
+  message?: string;
+  messageViewedAt?: string;
   firstDownloadAt?: string;
   lastDownloadAt?: string;
 }
@@ -52,6 +54,8 @@ export interface UploadGroup {
   totalSize: number;
   createdAt: string;
   status: GroupStatus;
+  message?: string;
+  messageViewedAt?: string;
   adminDownloadedAt?: string;
 }
 
@@ -67,7 +71,7 @@ export interface PresignedFileUpload {
 
 export interface AuditLog {
   id: string;
-  action: "upload" | "download";
+  action: "upload" | "download" | "view";
   context: "share" | "upload";
   fileName: string;
   fileId: string;

@@ -21,7 +21,9 @@ describe("sendShareReadyEmail", () => {
     const input = lastEmail();
     expect(input.FromEmailAddress).toBe("no-reply@test.example");
     expect(input.Destination?.ToAddresses).toEqual(["r@example.com"]);
-    expect(input.Content?.Simple?.Subject?.Data).toBe("Files shared with you on Secure Transfer");
+    expect(input.Content?.Simple?.Subject?.Data).toBe(
+      "Paul shared something with you on Secure Transfer"
+    );
   });
 
   it("uses singular 'file' for one file", async () => {
@@ -29,7 +31,7 @@ describe("sendShareReadyEmail", () => {
     const body = lastEmail().Content?.Simple?.Body?.Text?.Data ?? "";
     expect(body).toContain("Paul shared 1 file with you:");
     expect(body).toContain("  - a.txt");
-    expect(body).toContain("Log in to download: https://transfer.test.example");
+    expect(body).toContain("Log in to view: https://transfer.test.example");
   });
 
   it("uses plural 'files' for multiple files", async () => {
@@ -42,6 +44,20 @@ describe("sendShareReadyEmail", () => {
     const body = lastEmail().Content?.Simple?.Body?.Text?.Data ?? "";
     expect(body).toContain("Paul shared 2 files with you:");
     expect(body).toContain("  - a.txt\n  - b.txt");
+  });
+
+  it("describes a message-only share without a file list", async () => {
+    await sendShareReadyEmail("r@example.com", "Rae", [], "2026-07-15T18:00:00.000Z", true);
+    const body = lastEmail().Content?.Simple?.Body?.Text?.Data ?? "";
+    expect(body).toContain("Paul shared a message with you.");
+    expect(body).not.toContain("  - ");
+  });
+
+  it("describes a message plus files", async () => {
+    await sendShareReadyEmail("r@example.com", "Rae", ["a.txt"], "2026-07-15T18:00:00.000Z", true);
+    const body = lastEmail().Content?.Simple?.Body?.Text?.Data ?? "";
+    expect(body).toContain("Paul shared a message and 1 file with you:");
+    expect(body).toContain("  - a.txt");
   });
 
   it("formats a summer expiry in Central time as CDT", async () => {
@@ -81,16 +97,30 @@ describe("sendUploadReadyEmail", () => {
   it("uses singular 'file' for one file", async () => {
     await sendUploadReadyEmail("admin@test.example", "Sam Sender", ["only.pdf"]);
     const input = lastEmail();
-    expect(input.Content?.Simple?.Subject?.Data).toBe("New files uploaded on Secure Transfer");
+    expect(input.Content?.Simple?.Subject?.Data).toBe(
+      "New share from Sam Sender on Secure Transfer"
+    );
     const body = input.Content?.Simple?.Body?.Text?.Data ?? "";
-    expect(body).toContain("Sam Sender uploaded 1 file for you:");
+    expect(body).toContain("Sam Sender sent you 1 file:");
     expect(body).toContain("  - only.pdf");
-    expect(body).toContain("Log in to download: https://transfer.test.example");
+    expect(body).toContain("Log in to view: https://transfer.test.example");
   });
 
   it("uses plural 'files' for multiple files", async () => {
     await sendUploadReadyEmail("admin@test.example", "Sam Sender", ["a.pdf", "b.pdf"]);
     const body = lastEmail().Content?.Simple?.Body?.Text?.Data ?? "";
-    expect(body).toContain("Sam Sender uploaded 2 files for you:");
+    expect(body).toContain("Sam Sender sent you 2 files:");
+  });
+
+  it("describes a message-only upload", async () => {
+    await sendUploadReadyEmail("admin@test.example", "Sam Sender", [], true);
+    const body = lastEmail().Content?.Simple?.Body?.Text?.Data ?? "";
+    expect(body).toContain("Sam Sender sent you a message.");
+  });
+
+  it("describes a message plus files", async () => {
+    await sendUploadReadyEmail("admin@test.example", "Sam Sender", ["a.pdf", "b.pdf"], true);
+    const body = lastEmail().Content?.Simple?.Body?.Text?.Data ?? "";
+    expect(body).toContain("Sam Sender sent you a message and 2 files:");
   });
 });

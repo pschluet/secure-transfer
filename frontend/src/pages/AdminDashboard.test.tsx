@@ -19,7 +19,7 @@ const userRow: AdminUserRow = {
   firstName: "Jane",
   lastName: "Doe",
   createdAt: "2024-01-01T00:00:00Z",
-  hasDownloaded: false,
+  hasOpened: false,
   hasSent: false,
 };
 
@@ -82,10 +82,10 @@ describe("AdminDashboard", () => {
 
     expect(await screen.findByText("No users yet — add one above.")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Shares sent" }));
+    await user.click(screen.getByRole("button", { name: "Sent" }));
     expect(await screen.findByText("Nothing shared yet.")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Files received" }));
+    await user.click(screen.getByRole("button", { name: "Received" }));
     expect(await screen.findByText("Nothing received yet.")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Audit log" }));
@@ -239,7 +239,7 @@ describe("AdminDashboard", () => {
     const user = userEvent.setup();
 
     render(<AdminDashboard />);
-    await user.click(screen.getByRole("button", { name: "Files received" }));
+    await user.click(screen.getByRole("button", { name: "Received" }));
     expect(await screen.findByText("sent.txt")).toBeInTheDocument();
     expect(screen.getByText(/Jane/)).toBeInTheDocument();
   });
@@ -269,7 +269,7 @@ describe("AdminDashboard", () => {
     const user = userEvent.setup();
 
     render(<AdminDashboard />);
-    await user.click(screen.getByRole("button", { name: "Files received" }));
+    await user.click(screen.getByRole("button", { name: "Received" }));
     await screen.findByText("sent.txt");
 
     fireEvent.click(screen.getByRole("button", { name: "Download" }));
@@ -298,7 +298,7 @@ describe("AdminDashboard", () => {
     const user = userEvent.setup();
 
     render(<AdminDashboard />);
-    await user.click(screen.getByRole("button", { name: "Files received" }));
+    await user.click(screen.getByRole("button", { name: "Received" }));
     await screen.findByText("sent.txt");
 
     fireEvent.click(screen.getByRole("button", { name: "Download" }));
@@ -315,11 +315,54 @@ describe("AdminDashboard", () => {
     const user = userEvent.setup();
 
     render(<AdminDashboard />);
-    await user.click(screen.getByRole("button", { name: "Files received" }));
+    await user.click(screen.getByRole("button", { name: "Received" }));
     await screen.findByText("sent.txt");
 
-    await user.click(screen.getByRole("button", { name: "Refresh uploads" }));
+    await user.click(screen.getByRole("button", { name: "Refresh received" }));
 
     expect(await screen.findByText("Load failed")).toBeInTheDocument();
+  });
+
+  it("records a view when the admin opens a received message", async () => {
+    vi.mocked(api.adminListUploads).mockResolvedValue([
+      { ...receivedUpload, files: [], message: "Hi Paul" },
+    ]);
+    vi.mocked(api.adminViewUploadMessage).mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+
+    render(<AdminDashboard />);
+    await user.click(screen.getByRole("button", { name: "Received" }));
+    expect(screen.queryByText("Hi Paul")).not.toBeInTheDocument();
+
+    await user.click(await screen.findByRole("button", { name: "View message" }));
+
+    expect(screen.getByText("Hi Paul")).toBeInTheDocument();
+    expect(api.adminViewUploadMessage).toHaveBeenCalledWith("s1", "up1");
+  });
+
+  it("shows whether a sent message has been viewed", async () => {
+    vi.mocked(api.adminListShares).mockResolvedValue([
+      {
+        id: "sh1",
+        recipientSub: "u1",
+        recipient: { ...userRow },
+        message: "Hello Jane",
+        messageViewedAt: "2024-01-02T00:00:00Z",
+        files: [],
+        fileCount: 0,
+        readyCount: 0,
+        totalSize: 0,
+        createdAt: "2024-01-01T00:00:00Z",
+        expiresAt: "2099-01-01T00:00:00Z",
+        status: "ready",
+      },
+    ]);
+    const user = userEvent.setup();
+
+    render(<AdminDashboard />);
+    await user.click(screen.getByRole("button", { name: "Sent" }));
+
+    expect(await screen.findByText("Hello Jane")).toBeInTheDocument();
+    expect(screen.getByText("Viewed")).toBeInTheDocument();
   });
 });

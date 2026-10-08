@@ -15,13 +15,8 @@ const EXPIRY_OPTIONS = [
   { label: "30 days", hours: 24 * 30 },
 ];
 
-export function ShareFilesForm({
-  recipient,
-  onDone,
-}: {
-  recipient: UserProfile;
-  onDone: () => void;
-}) {
+export function ShareForm({ recipient, onDone }: { recipient: UserProfile; onDone: () => void }) {
+  const [message, setMessage] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [expiresInHours, setExpiresInHours] = useState(24);
   const [presigned, setPresigned] = useState<PresignedFileUpload[] | null>(null);
@@ -29,23 +24,27 @@ export function ShareFilesForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const canSubmit = files.length > 0 || message.trim() !== "";
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (files.length === 0) return;
+    if (!canSubmit) return;
     setBusy(true);
     setError(null);
     try {
-      const { uploads } = await api.adminCreateShare(
-        recipient.sub,
-        files.map((f) => ({ name: f.name, size: f.size })),
-        expiresInHours
-      );
-      setPresigned(uploads);
-      setProgress(Object.fromEntries(uploads.map((u) => [u.fileId, 0])));
-      await uploadFiles(files, uploads, setProgress);
+      const { uploads } = await api.adminCreateShare(recipient.sub, {
+        files: files.map((f) => ({ name: f.name, size: f.size })),
+        message: message.trim() || undefined,
+        expiresInHours,
+      });
+      if (uploads.length > 0) {
+        setPresigned(uploads);
+        setProgress(Object.fromEntries(uploads.map((u) => [u.fileId, 0])));
+        await uploadFiles(files, uploads, setProgress);
+      }
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to share files");
+      setError(err instanceof Error ? err.message : "Failed to share");
     } finally {
       setBusy(false);
     }
@@ -57,7 +56,18 @@ export function ShareFilesForm({
         Sharing with {recipient.firstName} {recipient.lastName} ({recipient.email})
       </p>
 
-      {!presigned && <FilePicker files={files} onChange={setFiles} />}
+      {!presigned && (
+        <>
+          <label htmlFor="message">Message (optional)</label>
+          <textarea
+            id="message"
+            value={message}
+            maxLength={10_000}
+            onChange={(e) => setMessage(e.target.value)}
+          />
+          <FilePicker files={files} onChange={setFiles} />
+        </>
+      )}
 
       {presigned && progress && (
         <ul className="file-items" style={{ width: "100%" }}>
@@ -90,8 +100,8 @@ export function ShareFilesForm({
       )}
 
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={busy || files.length === 0 || !!presigned}>
-        {busy ? "Uploading…" : `Share ${files.length || ""} file${files.length === 1 ? "" : "s"}`}
+      <button type="submit" disabled={busy || !canSubmit || !!presigned}>
+        {busy ? (files.length > 0 ? "Uploading…" : "Sharing…") : "Share"}
       </button>
     </form>
   );

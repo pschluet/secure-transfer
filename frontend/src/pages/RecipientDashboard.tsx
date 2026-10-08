@@ -7,6 +7,8 @@ import { pollAfterDelays } from "../lib/poll";
 import { formatDate, formatTimeLeft, zipFilename } from "../lib/format";
 import { FilePicker } from "../components/FilePicker";
 import { FileItem } from "../components/FileItem";
+import { MessageBox } from "../components/MessageBox";
+import { SentMessage } from "../components/SentMessage";
 import { ProgressBar } from "../components/ProgressBar";
 import { StatusPill } from "../components/StatusPill";
 import { RefreshButton } from "../components/RefreshButton";
@@ -24,6 +26,7 @@ export function RecipientDashboard() {
   const [uploads, setUploads] = useState<UploadGroup[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [message, setMessage] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [presigned, setPresigned] = useState<PresignedFileUpload[] | null>(null);
   const [progress, setProgress] = useState<Record<string, number> | null>(null);
@@ -56,6 +59,15 @@ export function RecipientDashboard() {
     void loadUploads();
   }, []);
 
+  async function handleViewMessage(shareId: string) {
+    setError(null);
+    try {
+      await api.meViewShareMessage(shareId);
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
   async function handleDownload(shareId: string, fileId: string) {
     setError(null);
     try {
@@ -87,18 +99,24 @@ export function RecipientDashboard() {
     }
   }
 
+  const canSend = files.length > 0 || message.trim() !== "";
+
   async function handleUploadSubmit(e: FormEvent) {
     e.preventDefault();
-    if (files.length === 0) return;
+    if (!canSend) return;
     setBusy(true);
     setError(null);
     try {
-      const { uploads: created } = await api.meCreateUpload(
-        files.map((f) => ({ name: f.name, size: f.size }))
-      );
-      setPresigned(created);
-      setProgress(Object.fromEntries(created.map((u) => [u.fileId, 0])));
-      await uploadFiles(files, created, setProgress);
+      const { uploads: created } = await api.meCreateUpload({
+        files: files.map((f) => ({ name: f.name, size: f.size })),
+        message: message.trim() || undefined,
+      });
+      if (created.length > 0) {
+        setPresigned(created);
+        setProgress(Object.fromEntries(created.map((u) => [u.fileId, 0])));
+        await uploadFiles(files, created, setProgress);
+      }
+      setMessage("");
       setFiles([]);
       setPresigned(null);
       setProgress(null);
@@ -118,13 +136,13 @@ export function RecipientDashboard() {
     <div className="dashboard">
       <nav className="tabs">
         <button className={tab === "shares" ? "active" : ""} onClick={() => setTab("shares")}>
-          Files shared with you
+          Shared with you
         </button>
         <button className={tab === "send" ? "active" : ""} onClick={() => setTab("send")}>
-          Send files
+          Send
         </button>
         <button className={tab === "uploads" ? "active" : ""} onClick={() => setTab("uploads")}>
-          Your upload history
+          Sent history
         </button>
       </nav>
       {error && <p className="error">{error}</p>}
@@ -132,8 +150,8 @@ export function RecipientDashboard() {
       {tab === "shares" && (
         <section>
           <div className="section-header">
-            <h2>Files shared with you</h2>
-            <RefreshButton onRefresh={loadShares} label="Refresh shared files" />
+            <h2>Shared with you</h2>
+            <RefreshButton onRefresh={loadShares} label="Refresh shared with you" />
           </div>
           {!shares ? (
             <p className="hint">Loading…</p>
@@ -149,6 +167,13 @@ export function RecipientDashboard() {
                       <span>{formatDate(s.createdAt)}</span>
                       <span className="mono">{formatTimeLeft(s.expiresAt)}</span>
                     </div>
+                    {s.message && (
+                      <MessageBox
+                        message={s.message}
+                        viewedAt={s.messageViewedAt}
+                        onView={() => void handleViewMessage(s.id)}
+                      />
+                    )}
                     <ul className="file-items">
                       {s.files.map((f) => (
                         <FileItem
@@ -191,9 +216,21 @@ export function RecipientDashboard() {
 
       {tab === "send" && (
         <section>
-          <h2>Send files</h2>
+          <h2>Send</h2>
           <form onSubmit={handleUploadSubmit}>
-            {!presigned && <FilePicker files={files} onChange={setFiles} disabled={busy} />}
+            {!presigned && (
+              <>
+                <label htmlFor="send-message">Message (optional)</label>
+                <textarea
+                  id="send-message"
+                  value={message}
+                  maxLength={10_000}
+                  disabled={busy}
+                  onChange={(e) => setMessage(e.target.value)}
+                />
+                <FilePicker files={files} onChange={setFiles} disabled={busy} />
+              </>
+            )}
 
             {presigned && progress && (
               <ul className="file-items" style={{ width: "100%" }}>
@@ -208,10 +245,8 @@ export function RecipientDashboard() {
               </ul>
             )}
 
-            <button type="submit" disabled={busy || files.length === 0}>
-              {busy
-                ? "Uploading…"
-                : `Send ${files.length || ""} file${files.length === 1 ? "" : "s"}`}
+            <button type="submit" disabled={busy || !canSend}>
+              {busy ? (files.length > 0 ? "Uploading…" : "Sending…") : "Send"}
             </button>
           </form>
         </section>
@@ -220,8 +255,8 @@ export function RecipientDashboard() {
       {tab === "uploads" && (
         <section>
           <div className="section-header">
-            <h2>Your upload history</h2>
-            <RefreshButton onRefresh={loadUploads} label="Refresh upload history" />
+            <h2>Sent history</h2>
+            <RefreshButton onRefresh={loadUploads} label="Refresh sent history" />
           </div>
           {!uploads ? (
             <p className="hint">Loading…</p>
@@ -241,6 +276,7 @@ export function RecipientDashboard() {
                       <StatusPill tone="pending">Uploading…</StatusPill>
                     )}
                   </div>
+                  {u.message && <SentMessage message={u.message} viewedAt={u.messageViewedAt} />}
                   <ul className="file-items">
                     {u.files.map((f) => (
                       <FileItem key={f.fileId} name={f.name} size={f.size} />

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { app } from "../src/api";
+import { sendUploadReadyEmail } from "../src/email";
 import { presignDownload } from "../src/s3";
 import type { AuditLog, ShareGroup, UploadGroup, UserProfile } from "../src/types";
 import { db, resetDb, seed } from "./helpers/fakeDb";
@@ -24,6 +25,12 @@ vi.mock("../src/s3", async () => {
 });
 
 vi.mock("ulid", async () => await import("./helpers/ulid"));
+
+vi.mock("../src/email", () => ({
+  sendShareReadyEmail: vi.fn(async () => {}),
+  sendUploadReadyEmail: vi.fn(async () => {}),
+  sendUserInvitedEmail: vi.fn(async () => {}),
+}));
 
 const NOW = "2026-07-30T12:00:00.000Z";
 
@@ -165,6 +172,54 @@ describe("GET /me/shares/:id/files/:fileId/download", () => {
   });
 });
 
+describe("POST /me/shares/:id/message/view", () => {
+  it("404s when the share has no message", async () => {
+    seed(share({ id: "g1" }));
+    const res = await app.request(
+      "/api/me/shares/g1/message/view",
+      { method: "POST" },
+      env(userClaims())
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("410s when expired", async () => {
+    seed(share({ id: "g1", message: "hi", expiresAt: "2020-01-01T00:00:00.000Z" }));
+    const res = await app.request(
+      "/api/me/shares/g1/message/view",
+      { method: "POST" },
+      env(userClaims())
+    );
+    expect(res.status).toBe(410);
+  });
+
+  it("records the first view only and audits each view", async () => {
+    seed(meProfile());
+    seed(share({ id: "g1", message: "hi" }));
+    const view = () =>
+      app.request("/api/me/shares/g1/message/view", { method: "POST" }, env(userClaims()));
+
+    expect((await view()).status).toBe(200);
+    const key = ["USER#user-1", "SHARE#2026-06-01T00:00:00.000Z#g1"] as const;
+    expect((await db.get<ShareGroup>(...key))?.messageViewedAt).toBe(NOW);
+
+    vi.setSystemTime(new Date("2026-07-31T00:00:00.000Z"));
+    await view();
+    expect((await db.get<ShareGroup>(...key))?.messageViewedAt).toBe(NOW);
+
+    const audits = await db.queryGsi1<AuditLog>("AUDIT");
+    expect(audits).toHaveLength(2);
+    expect(audits[0]).toMatchObject({
+      action: "view",
+      context: "share",
+      fileName: "Message",
+      fileId: "g1",
+      actorSub: "user-1",
+      actorName: "Uma Recipient",
+    });
+  });
+});
+
 describe("GET /me/uploads", () => {
   it("returns the caller's uploads newest-first", async () => {
     const base = {
@@ -199,13 +254,40 @@ describe("GET /me/uploads", () => {
 });
 
 describe("POST /me/uploads", () => {
-  it("400s on an empty files array", async () => {
+  it("400s with neither files nor a message", async () => {
     const res = await app.request(
       "/api/me/uploads",
       jsonReq("POST", { files: [] }),
       env(userClaims())
     );
     expect(res.status).toBe(400);
+  });
+
+  it("makes a message-only upload ready immediately and emails the admin", async () => {
+    seed(meProfile());
+    vi.mocked(sendUploadReadyEmail).mockClear();
+    const res = await app.request(
+      "/api/me/uploads",
+      jsonReq("POST", { message: "Hi Paul" }),
+      env(userClaims())
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { group: UploadGroup };
+    expect(body.group.status).toBe("ready");
+    expect(body.group.message).toBe("Hi Paul");
+    expect(sendUploadReadyEmail).toHaveBeenCalledWith(
+      "admin@test.example",
+      "Uma Recipient",
+      [],
+      true
+    );
+    const [audit] = await db.queryGsi1<AuditLog>("AUDIT");
+    expect(audit).toMatchObject({
+      action: "upload",
+      context: "upload",
+      fileName: "Message",
+      actorSub: "user-1",
+    });
   });
 
   it("creates an upload group with presigned URLs", async () => {

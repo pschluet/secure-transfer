@@ -1,10 +1,11 @@
 # Secure Transfer
 
-A small, low-traffic file transfer site at **transfer.pauldev.io**. Everyone (admin and
-recipients) signs in with a passwordless email one-time code via Cognito. The admin creates
-users, shares files with a chosen expiration, and can see who has downloaded what and who has
-sent files back. Recipients can always send files to the admin, and can download whatever's been
-shared with them until it expires.
+A small, low-traffic site for exchanging files and messages at **transfer.pauldev.io**. Everyone
+(admin and recipients) signs in with a passwordless email one-time code via Cognito. A "share" is
+a message, files, or both. The admin creates users, shares with them using a chosen expiration,
+and can see which files have been downloaded, which messages have been viewed, and who has sent
+something back. Recipients can always send a message and/or files to the admin, and can view and
+download whatever's been shared with them until it expires.
 
 ## Architecture
 
@@ -17,12 +18,14 @@ shared with them until it expires.
 - **Storage:** files are uploaded directly to S3 via presigned URLs — no zipping, no server
   bottleneck. Multiple files uploaded together are tracked as one "group." An S3 event Lambda
   (`backend/src/s3-event.ts`) marks files ready and emails a notification once a whole group has
-  landed.
+  landed. A message-only share has no files to wait on, so it's ready (and emailed) as soon as
+  it's created. Messages are stored on the share's DynamoDB item.
 - **Database:** one DynamoDB table (on-demand billing) + one GSI for admin-wide list views.
 - **Retention:** files and data are kept forever (`RemovalPolicy.RETAIN` on the table and files
   bucket) — the admin deletes things manually from the dashboard.
-- **Email:** SES, from `no-reply@pauldev.io` — used for OTP codes (via Cognito) and for share/upload
-  notifications.
+- **Email:** SES, from `no-reply@pauldev.io` — used for OTP codes (via Cognito) and for share
+  notifications in both directions. Notifications say what was shared but never include the
+  message text, so reading it means signing in (which is what records it as viewed).
 
 Cost at this scale is effectively pennies a month: on-demand DynamoDB, Lambda free tier, HTTP API
 (~$1/million requests), S3 storage, Cognito Essentials (free under 10,000 MAU), SES ($0.10/1,000
@@ -74,7 +77,7 @@ addresses you've manually verified in SES.
 
 `infra/bin/app.ts` defaults `githubRepo` to `paulschlueter/secure-transfer` and `adminEmail` to
 `paul@paulschlueter.com` — the GitHub OIDC deploy role is scoped to the former, and the latter
-gets notified when someone sends you files. Override either at deploy time if needed:
+gets notified when someone sends you something. Override either at deploy time if needed:
 
 ```sh
 npx cdk deploy -c githubRepo=your-org/your-repo -c adminEmail=you@example.com

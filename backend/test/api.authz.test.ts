@@ -29,6 +29,7 @@ const adminRoutes: [string, string][] = [
   ["DELETE", "/api/admin/users/some-sub/shares/some-id"],
   ["GET", "/api/admin/uploads"],
   ["GET", "/api/admin/users/s/uploads/i/files/f/download"],
+  ["POST", "/api/admin/users/s/uploads/i/message/view"],
   ["DELETE", "/api/admin/users/some-sub/uploads/some-id"],
   ["GET", "/api/admin/audit"],
 ];
