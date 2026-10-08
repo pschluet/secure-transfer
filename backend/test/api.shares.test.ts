@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { app } from "../src/api";
+import { sendShareReadyEmail } from "../src/email";
 import { deleteObject } from "../src/s3";
-import type { ShareGroup, UserProfile } from "../src/types";
+import type { AuditLog, ShareGroup, UserProfile } from "../src/types";
 import { db, resetDb, seed } from "./helpers/fakeDb";
 import { resetUlid } from "./helpers/ulid";
 import { adminClaims, env, jsonReq } from "./helpers/request";
@@ -25,6 +26,12 @@ vi.mock("../src/s3", async () => {
 
 vi.mock("ulid", async () => await import("./helpers/ulid"));
 
+vi.mock("../src/email", () => ({
+  sendShareReadyEmail: vi.fn(async () => {}),
+  sendUploadReadyEmail: vi.fn(async () => {}),
+  sendUserInvitedEmail: vi.fn(async () => {}),
+}));
+
 function profile(sub: string): UserProfile {
   return {
     pk: `USER#${sub}`,
@@ -43,6 +50,7 @@ beforeEach(() => {
   resetDb();
   resetUlid();
   vi.mocked(deleteObject).mockClear();
+  vi.mocked(sendShareReadyEmail).mockClear();
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-07-30T12:00:00.000Z"));
 });
@@ -108,14 +116,73 @@ describe("POST /admin/users/:sub/shares", () => {
     expect(stored?.id).toBe("ulid-1");
   });
 
-  it("400s on an empty files array", async () => {
+  it("400s with neither files nor a message", async () => {
     seed(profile("recip"));
     const res = await app.request(
       "/api/admin/users/recip/shares",
-      jsonReq("POST", { files: [], expiresInHours: 24 }),
+      jsonReq("POST", { files: [], message: "   ", expiresInHours: 24 }),
       env(adminClaims())
     );
     expect(res.status).toBe(400);
+  });
+
+  it("400s when the message exceeds 10,000 chars", async () => {
+    seed(profile("recip"));
+    const res = await app.request(
+      "/api/admin/users/recip/shares",
+      jsonReq("POST", { message: "a".repeat(10_001), expiresInHours: 24 }),
+      env(adminClaims())
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("makes a message-only share ready immediately, emails, and audits the message", async () => {
+    seed(profile("recip"));
+    const res = await app.request(
+      "/api/admin/users/recip/shares",
+      jsonReq("POST", { message: "  Hello there  ", expiresInHours: 24 }),
+      env(adminClaims())
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { group: ShareGroup; uploads: unknown[] };
+    expect(body.group.status).toBe("ready");
+    expect(body.group.message).toBe("Hello there");
+    expect(body.group.files).toEqual([]);
+    expect(body.uploads).toEqual([]);
+
+    expect(sendShareReadyEmail).toHaveBeenCalledWith(
+      "recip@example.com",
+      "First",
+      [],
+      "2026-07-31T12:00:00.000Z",
+      true
+    );
+    const audits = await db.queryGsi1<AuditLog>("AUDIT");
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({
+      action: "upload",
+      context: "share",
+      fileName: "Message",
+      fileId: "ulid-1",
+      actorSub: "admin-1",
+    });
+  });
+
+  it("keeps a message+files share pending until the files land", async () => {
+    seed(profile("recip"));
+    const res = await app.request(
+      "/api/admin/users/recip/shares",
+      jsonReq("POST", {
+        files: [{ name: "a.txt", size: 1 }],
+        message: "See attached",
+        expiresInHours: 24,
+      }),
+      env(adminClaims())
+    );
+    const body = (await res.json()) as { group: ShareGroup };
+    expect(body.group.status).toBe("pending");
+    expect(body.group.message).toBe("See attached");
+    expect(sendShareReadyEmail).not.toHaveBeenCalled();
   });
 
   it("400s when expiresInHours is not positive", async () => {

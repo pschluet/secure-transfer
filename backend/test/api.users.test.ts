@@ -141,7 +141,7 @@ describe("POST /admin/users", () => {
 });
 
 describe("GET /admin/users", () => {
-  it("enriches with hasDownloaded/hasSent and sorts newest-first", async () => {
+  it("enriches with hasOpened/hasSent and sorts newest-first", async () => {
     seed(profile({ sub: "a", createdAt: "2026-01-01T00:00:00.000Z" }));
     seed(profile({ sub: "b", createdAt: "2026-02-01T00:00:00.000Z" }));
 
@@ -179,17 +179,42 @@ describe("GET /admin/users", () => {
 
     const res = await app.request("/api/admin/users", { method: "GET" }, env(adminClaims()));
     const body = (await res.json()) as (UserProfile & {
-      hasDownloaded: boolean;
+      hasOpened: boolean;
       hasSent: boolean;
     })[];
 
     expect(body.map((p) => p.sub)).toEqual(["b", "a"]);
     const a = body.find((p) => p.sub === "a")!;
     const b = body.find((p) => p.sub === "b")!;
-    expect(a.hasDownloaded).toBe(true);
+    expect(a.hasOpened).toBe(true);
     expect(a.hasSent).toBe(false);
-    expect(b.hasDownloaded).toBe(false);
+    expect(b.hasOpened).toBe(false);
     expect(b.hasSent).toBe(true);
+  });
+
+  it("counts a viewed message as opened", async () => {
+    seed(profile({ sub: "a", createdAt: "2026-01-01T00:00:00.000Z" }));
+    seed({
+      pk: "USER#a",
+      sk: "SHARE#2026-03-01#s1",
+      id: "s1",
+      recipientSub: "a",
+      message: "hello",
+      messageViewedAt: "2026-03-02T00:00:00.000Z",
+      files: [],
+      fileCount: 0,
+      readyCount: 0,
+      totalSize: 0,
+      createdAt: "2026-03-01T00:00:00.000Z",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      status: "ready",
+      gsi1pk: "SHARES",
+      gsi1sk: "2026-03-01",
+    } satisfies ShareGroup);
+
+    const res = await app.request("/api/admin/users", { method: "GET" }, env(adminClaims()));
+    const body = (await res.json()) as { sub: string; hasOpened: boolean }[];
+    expect(body.find((p) => p.sub === "a")?.hasOpened).toBe(true);
   });
 });
 

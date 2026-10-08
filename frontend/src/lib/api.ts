@@ -39,6 +39,12 @@ export interface FileMeta {
   size: number;
 }
 
+/** What a share (either direction) carries: a message, files, or both. */
+export interface NewShare {
+  files: FileMeta[];
+  message?: string;
+}
+
 function toQueryString(params: Record<string, string | number | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -59,10 +65,10 @@ export const api = {
   adminDeleteUser: (sub: string) => request<void>(`/admin/users/${sub}`, { method: "DELETE" }),
 
   adminListShares: () => request<ShareGroupWithRecipient[]>("/admin/shares"),
-  adminCreateShare: (recipientSub: string, files: FileMeta[], expiresInHours: number) =>
+  adminCreateShare: (recipientSub: string, body: NewShare & { expiresInHours: number }) =>
     request<{ group: ShareGroup; uploads: PresignedFileUpload[] }>(
       `/admin/users/${recipientSub}/shares`,
-      { method: "POST", body: JSON.stringify({ files, expiresInHours }) }
+      { method: "POST", body: JSON.stringify(body) }
     ),
   adminDeleteShare: (recipientSub: string, id: string) =>
     request<void>(`/admin/users/${recipientSub}/shares/${id}`, { method: "DELETE" }),
@@ -83,17 +89,23 @@ export const api = {
     ),
   adminDownloadUploadFile: (senderSub: string, id: string, fileId: string) =>
     request<{ url: string }>(`/admin/users/${senderSub}/uploads/${id}/files/${fileId}/download`),
+  adminViewUploadMessage: (senderSub: string, id: string) =>
+    request<{ ok: true }>(`/admin/users/${senderSub}/uploads/${id}/message/view`, {
+      method: "POST",
+    }),
   adminDeleteUpload: (senderSub: string, id: string) =>
     request<void>(`/admin/users/${senderSub}/uploads/${id}`, { method: "DELETE" }),
 
   meShares: () => request<ShareGroup[]>("/me/shares"),
   meDownloadShareFile: (id: string, fileId: string) =>
     request<{ url: string }>(`/me/shares/${id}/files/${fileId}/download`),
+  meViewShareMessage: (id: string) =>
+    request<{ ok: true }>(`/me/shares/${id}/message/view`, { method: "POST" }),
 
   meUploads: () => request<UploadGroup[]>("/me/uploads"),
-  meCreateUpload: (files: FileMeta[]) =>
+  meCreateUpload: (body: NewShare) =>
     request<{ group: UploadGroup; uploads: PresignedFileUpload[] }>("/me/uploads", {
       method: "POST",
-      body: JSON.stringify({ files }),
+      body: JSON.stringify(body),
     }),
 };

@@ -86,7 +86,8 @@ describe("shares completion", () => {
       "recipA@example.com",
       "Fee",
       ["a.txt"],
-      "2099-01-01T00:00:00.000Z"
+      "2099-01-01T00:00:00.000Z",
+      false
     );
 
     const rows = await audits();
@@ -98,6 +99,48 @@ describe("shares completion", () => {
       actorSub: "admin-9",
       actorEmail: "admin9@test.example",
     });
+  });
+
+  it("flags the message in the email and audits it alongside the files", async () => {
+    seed(profile("recipA"));
+    seed({
+      pk: "USER#recipA",
+      sk: "SHARE#2026-06-01#gm",
+      id: "gm",
+      recipientSub: "recipA",
+      message: "See attached",
+      files: [
+        {
+          fileId: "fa",
+          name: "a.txt",
+          size: 5,
+          s3Key: "shares/recipA/gm/a.txt",
+          status: "pending",
+        },
+      ],
+      fileCount: 1,
+      readyCount: 0,
+      totalSize: 5,
+      createdAt: "2026-06-01T00:00:00.000Z",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      status: "pending",
+      createdBySub: "admin-9",
+      createdByEmail: "admin9@test.example",
+      gsi1pk: "SHARES",
+      gsi1sk: "2026-06-01",
+    } satisfies ShareGroup);
+
+    await invoke(s3Event("shares/recipA/gm/a.txt"));
+
+    expect(sendShareReadyEmail).toHaveBeenCalledWith(
+      "recipA@example.com",
+      "Fee",
+      ["a.txt"],
+      "2099-01-01T00:00:00.000Z",
+      true
+    );
+    const names = (await audits()).map((r) => r.fileName).sort();
+    expect(names).toEqual(["Message", "a.txt"]);
   });
 
   it("only flips a multi-file group once the last file lands", async () => {
@@ -213,9 +256,12 @@ describe("uploads completion", () => {
     await invoke(s3Event("uploads/sendB/u1/a.txt"));
 
     expect(sendUploadReadyEmail).toHaveBeenCalledTimes(1);
-    expect(sendUploadReadyEmail).toHaveBeenCalledWith("admin@test.example", "Fee Lastname", [
-      "a.txt",
-    ]);
+    expect(sendUploadReadyEmail).toHaveBeenCalledWith(
+      "admin@test.example",
+      "Fee Lastname",
+      ["a.txt"],
+      false
+    );
 
     const rows = await audits();
     expect(rows).toHaveLength(1);

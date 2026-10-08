@@ -1,11 +1,8 @@
 import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import type { S3Handler } from "aws-lambda";
 import { db } from "./db";
-import { recordAudit } from "./audit";
-import { sendShareReadyEmail, sendUploadReadyEmail } from "./email";
-import type { ShareGroup, UploadGroup, UserProfile } from "./types";
-
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL!;
+import { notifyShareReady, notifyUploadReady } from "./notify";
+import type { ShareGroup, UploadGroup } from "./types";
 
 /**
  * Marks the file matching `key` as ready within its group. If this was the
@@ -74,62 +71,11 @@ export const handler: S3Handler = async (event) => {
     if (prefix === "shares") {
       const items = await db.queryByPk<ShareGroup>(`USER#${ownerSub}`, "SHARE#");
       const completed = await markFileReady(items, groupId, key);
-      if (completed) {
-        const recipient = await db.get<UserProfile>(`USER#${ownerSub}`, "PROFILE");
-        if (recipient) {
-          await sendShareReadyEmail(
-            recipient.email,
-            recipient.firstName,
-            completed.files.map((f) => f.name),
-            completed.expiresAt
-          );
-        }
-        // Attribute the upload to whichever admin created the share, not the
-        // recipient — the S3 key only encodes the recipient's sub, so this
-        // was captured on the group at creation time (see POST /admin/users/:sub/shares).
-        if (completed.createdBySub && completed.createdByEmail) {
-          await Promise.all(
-            completed.files.map((f) =>
-              recordAudit({
-                action: "upload",
-                context: "share",
-                fileName: f.name,
-                fileId: f.fileId,
-                size: f.size,
-                actorSub: completed.createdBySub!,
-                actorEmail: completed.createdByEmail!,
-              }).catch((err) => console.error("audit log write failed", err))
-            )
-          );
-        }
-      }
+      if (completed) await notifyShareReady(completed);
     } else if (prefix === "uploads") {
       const items = await db.queryByPk<UploadGroup>(`USER#${ownerSub}`, "UPLOAD#");
       const completed = await markFileReady(items, groupId, key);
-      if (completed) {
-        const sender = await db.get<UserProfile>(`USER#${ownerSub}`, "PROFILE");
-        await sendUploadReadyEmail(
-          ADMIN_EMAIL,
-          sender ? `${sender.firstName} ${sender.lastName}` : "A user",
-          completed.files.map((f) => f.name)
-        );
-        // The uploader's sub is the group owner (`ownerSub`) for this
-        // direction, so no extra attribution needs to be stored at creation.
-        await Promise.all(
-          completed.files.map((f) =>
-            recordAudit({
-              action: "upload",
-              context: "upload",
-              fileName: f.name,
-              fileId: f.fileId,
-              size: f.size,
-              actorSub: ownerSub,
-              actorEmail: sender?.email ?? "",
-              actorName: sender ? `${sender.firstName} ${sender.lastName}` : undefined,
-            }).catch((err) => console.error("audit log write failed", err))
-          )
-        );
-      }
+      if (completed) await notifyUploadReady(completed);
     }
   }
 };

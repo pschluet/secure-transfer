@@ -24,7 +24,7 @@ export interface UserProfile {
   gsi1sk: string; // email
 }
 
-/** A group of files the admin shared with a recipient. */
+/** Something the admin shared with a recipient: a message, files, or both. */
 export interface ShareGroup {
   pk: string; // USER#<recipientSub>
   sk: string; // SHARE#<createdAt>#<id>
@@ -37,6 +37,10 @@ export interface ShareGroup {
   createdAt: string;
   expiresAt: string;
   status: GroupStatus;
+  /** Optional text message sent along with (or instead of) files. */
+  message?: string;
+  /** Set the first time the other party opens the message. */
+  messageViewedAt?: string;
   firstDownloadAt?: string;
   lastDownloadAt?: string;
   /** The admin who created this share — not necessarily `recipientSub`'s
@@ -48,7 +52,7 @@ export interface ShareGroup {
   gsi1sk: string; // createdAt
 }
 
-/** A group of files a recipient sent to the admin. */
+/** Something a recipient sent to the admin: a message, files, or both. */
 export interface UploadGroup {
   pk: string; // USER#<senderSub>
   sk: string; // UPLOAD#<createdAt>#<id>
@@ -60,6 +64,10 @@ export interface UploadGroup {
   totalSize: number;
   createdAt: string;
   status: GroupStatus;
+  /** Optional text message sent along with (or instead of) files. */
+  message?: string;
+  /** Set the first time the other party opens the message. */
+  messageViewedAt?: string;
   adminDownloadedAt?: string;
   gsi1pk: "UPLOADS";
   gsi1sk: string; // createdAt
@@ -72,12 +80,13 @@ export interface PresignedFileUpload {
 }
 
 /** An append-only record of a file being uploaded (landed in S3) or
- * downloaded, for the admin-facing audit log. */
+ * downloaded, or a message being sent or viewed, for the admin-facing audit
+ * log. Message entries use `fileName: "Message"` and the group id as `fileId`. */
 export interface AuditLog {
   pk: string; // AUDIT#<id>
   sk: "AUDIT";
   id: string;
-  action: "upload" | "download";
+  action: "upload" | "download" | "view";
   context: "share" | "upload";
   fileName: string;
   fileId: string;

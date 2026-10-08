@@ -157,6 +157,38 @@ describe("GET /admin/users/:sub/uploads/:id/files/:fileId/download", () => {
   });
 });
 
+describe("POST /admin/users/:sub/uploads/:id/message/view", () => {
+  it("404s when the upload has no message", async () => {
+    seed(upload({ id: "g1", senderSub: "s" }));
+    const res = await app.request(
+      "/api/admin/users/s/uploads/g1/message/view",
+      { method: "POST" },
+      env(adminClaims())
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("sets messageViewedAt and audits the view as the admin", async () => {
+    seed(upload({ id: "g1", senderSub: "s", message: "hi" }));
+    const res = await app.request(
+      "/api/admin/users/s/uploads/g1/message/view",
+      { method: "POST" },
+      env(adminClaims())
+    );
+    expect(res.status).toBe(200);
+    const stored = await db.get<UploadGroup>("USER#s", "UPLOAD#2026-06-01T00:00:00.000Z#g1");
+    expect(stored?.messageViewedAt).toBeDefined();
+    const [audit] = await db.queryGsi1<AuditLog>("AUDIT");
+    expect(audit).toMatchObject({
+      action: "view",
+      context: "upload",
+      fileName: "Message",
+      fileId: "g1",
+      actorSub: "admin-1",
+    });
+  });
+});
+
 describe("DELETE /admin/users/:sub/uploads/:id", () => {
   it("404s when the upload is missing", async () => {
     const res = await app.request(

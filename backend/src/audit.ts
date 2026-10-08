@@ -3,7 +3,7 @@ import { db } from "./db";
 import type { AuditLog } from "./types";
 
 export interface AuditEvent {
-  action: "upload" | "download";
+  action: "upload" | "download" | "view";
   context: "share" | "upload";
   fileName: string;
   fileId: string;

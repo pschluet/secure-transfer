@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserProfile } from "../types";
 import { api } from "../lib/api";
 import { uploadFiles } from "../lib/upload";
-import { ShareFilesForm } from "./ShareFilesForm";
+import { ShareForm } from "./ShareForm";
 
 vi.mock("../lib/api");
 vi.mock("../lib/upload");
@@ -26,22 +26,43 @@ function makeFile(name: string, size: number): File {
   return file;
 }
 
-describe("ShareFilesForm", () => {
+describe("ShareForm", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("defaults the expiry select to 24 hours with the documented options", () => {
-    render(<ShareFilesForm recipient={recipient} onDone={() => {}} />);
+    render(<ShareForm recipient={recipient} onDone={() => {}} />);
     const select = screen.getByLabelText("Expires in") as HTMLSelectElement;
     expect(select.value).toBe("24");
     const options = Array.from(select.options).map((o) => o.textContent);
     expect(options).toEqual(["1 hour", "24 hours", "3 days", "7 days", "30 days"]);
   });
 
-  it("disables submit with zero files selected", () => {
-    render(<ShareFilesForm recipient={recipient} onDone={() => {}} />);
-    expect(screen.getByRole("button", { name: /Share/ })).toBeDisabled();
+  it("disables submit with no files and no message", () => {
+    render(<ShareForm recipient={recipient} onDone={() => {}} />);
+    expect(screen.getByRole("button", { name: "Share" })).toBeDisabled();
+  });
+
+  it("shares a message on its own without uploading anything", async () => {
+    vi.mocked(api.adminCreateShare).mockResolvedValue({ group: {}, uploads: [] } as never);
+    const onDone = vi.fn();
+    render(<ShareForm recipient={recipient} onDone={onDone} />);
+
+    fireEvent.change(screen.getByLabelText("Message (optional)"), {
+      target: { value: "  Hello  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+
+    await waitFor(() =>
+      expect(api.adminCreateShare).toHaveBeenCalledWith("r1", {
+        files: [],
+        message: "Hello",
+        expiresInHours: 24,
+      })
+    );
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(uploadFiles).not.toHaveBeenCalled();
   });
 
   it("creates the share then uploads the selected files", async () => {
@@ -50,14 +71,18 @@ describe("ShareFilesForm", () => {
     vi.mocked(uploadFiles).mockResolvedValue(undefined);
     const onDone = vi.fn();
 
-    const { container } = render(<ShareFilesForm recipient={recipient} onDone={onDone} />);
+    const { container } = render(<ShareForm recipient={recipient} onDone={onDone} />);
     const file = makeFile("a.txt", 10);
     fireEvent.change(fileInput(container), { target: { files: [file] } });
 
-    fireEvent.click(screen.getByRole("button", { name: /Share/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
 
     await waitFor(() =>
-      expect(api.adminCreateShare).toHaveBeenCalledWith("r1", [{ name: "a.txt", size: 10 }], 24)
+      expect(api.adminCreateShare).toHaveBeenCalledWith("r1", {
+        files: [{ name: "a.txt", size: 10 }],
+        message: undefined,
+        expiresInHours: 24,
+      })
     );
     await waitFor(() =>
       expect(uploadFiles).toHaveBeenCalledWith([file], uploads, expect.any(Function))

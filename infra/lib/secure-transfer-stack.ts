@@ -138,6 +138,9 @@ export class SecureTransferStack extends Stack {
       TABLE_NAME: table.tableName,
       FROM_EMAIL: `no-reply@${hostedZoneName}`,
       SITE_URL: `https://${domainName}`,
+      // Both functions can notify the admin of a new share: the S3 event
+      // handler once files land, the API directly for a message-only share.
+      ADMIN_EMAIL: adminEmail,
     };
 
     const apiFn = new NodejsFunction(this, "ApiFunction", {
@@ -183,10 +186,7 @@ export class SecureTransferStack extends Stack {
       memorySize: 256,
       timeout: Duration.seconds(30),
       bundling: { minify: true, target: "node22" },
-      environment: {
-        ...commonEnv,
-        ADMIN_EMAIL: adminEmail,
-      },
+      environment: commonEnv,
     });
     table.grantReadWriteData(s3EventFn);
     s3EventFn.addToRolePolicy(
